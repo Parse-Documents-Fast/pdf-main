@@ -1,6 +1,6 @@
 # Spec: pdf-main
 
-**Estado:** En revisión (fase SPECIFY — gateada por aprobación humana)
+**Estado:** Aprobado
 
 ## Objective
 
@@ -39,13 +39,13 @@ Recibe la subida de un documento (PDF o Markdown), lo valida, decide a qué serv
 | Componente | Elección | Justificación |
 |---|---|---|
 | Lenguaje | Go (1.24+) | Concurrencia real para atender subidas/descargas simultáneas y N consumers de cola |
-| Router HTTP | `net/http` stdlib (ServeMux con patrones método+ruta, Go 1.22+) | Sin dependencias externas; KISS. Suficiente para rutas con path params |
+| Router HTTP | `github.com/go-chi/chi/v5` | Router ligero, ergonomía de middlewares y path params |
 | Cliente Redis | `go-redis/v9` | Streams con consumer groups (`XREADGROUP`/`XACK`/`XADD`) |
 | HTTP client | `net/http` stdlib | Para hablar con validator/persistance/converter |
 | Circuit breaker | `github.com/sony/gobreaker` | Envuelve las llamadas HTTP internas a downstream (resiliencia interna) |
 | MongoDB | *ninguno* | `pdf-main` no toca Mongo: pasa por `pdf-persistance` |
 
-**Dependencias externas:** `github.com/redis/go-redis/v9` y `github.com/sony/gobreaker`. Módulo: `github.com/Parse-Documents-Fast/pdf-main`.
+**Dependencias externas:** `github.com/go-chi/chi/v5`, `github.com/redis/go-redis/v9` y `github.com/sony/gobreaker`. Módulo: `github.com/Parse-Documents-Fast/pdf-main`.
 
 ---
 
@@ -202,7 +202,8 @@ Convenciones:
   "checksum": "...",
   "status": "done",
   "created_at": "...",
-  "content_html": "<h1>Título</h1><p>texto…</p>"   // null mientras pending
+  "content_html": "<h1>Título</h1><p>texto…</p>",  // null mientras pending / failed
+  "error": null                                  // string corto, solo cuando status="failed"
 }
 ```
 
@@ -260,15 +261,17 @@ Convenciones:
   "checksum": "…",
   "status": "pending",
   "content_html": null,
+  "error": null,
   "created_at": "2026-09-18T10:00:00Z"
 }
 
 // update (PATCH) — cuando llega un resultado de cola
 { "content_html": "<h1>…</h1>", "status": "done" }
-// o { "status": "failed" }
+// o, ante fallo:
+{ "status": "failed", "error": "No se pudo extraer texto del PDF" }
 ```
 
-> **Nota de coordinación:** el plan de `pdf-persistance` lista el modelo como `content_html, checksum, original_format, title, created_at`. Este spec le **agrega `status`** (necesario porque el flujo es asíncrono). Queda como requisito para `pdf-persistance`.
+> **Nota de coordinación:** el plan de `pdf-persistance` lista el modelo como `content_html, checksum, original_format, title, created_at`. Este spec le **agrega `status` y `error`** (necesarios porque el flujo es asíncrono y la web debe poder mostrar el motivo del fallo). Quedan como requisito para `pdf-persistance`. La **limpieza/TTL de documentos `failed` es responsabilidad de `pdf-persistance`, no de `pdf-main`**.
 
 ---
 
@@ -347,7 +350,18 @@ El breaker envuelve solo las llamadas internas de `clients/*`; el borde público
 
 **Streams (constantes, ADR-0004):** `queue:extraction`, `queue:extraction-results`, `queue:conversion`, `queue:conversion-results`, con consumer groups y `XACK`.
 
-**Traefik:** `pdf-main` declara en su `docker-compose` los labels de enrutado (`Host(api.pdfmanager.local)`, entrypoint `websecure`, TLS) y referencia los middlewares que define `pdf-infra` (rate-limit y circuit breaker). Ver Open Questions.
+**Traefik:** `pdf-main` declara en su `docker-compose.yml` los labels de enrutado (`Host(api.pdfmanager.local)`, entrypoint `websecure`, TLS) y encadena los middlewares que define `pdf-infra` por file provider:
+
+```yaml
+labels:
+  - "traefik.enable=true"
+  - "traefik.http.routers.pdf-main.rule=Host(`api.pdfmanager.local`)"
+  - "traefik.http.routers.pdf-main.entrypoints=websecure"
+  - "traefik.http.routers.pdf-main.tls=true"
+  - "traefik.http.routers.pdf-main.middlewares=rate-limit-redis@file,cb-documents@file"
+```
+
+El middleware `cb-documents` es el circuit breaker de Traefik (ya configurado en `pdf-infra`); `rate-limit-redis` es el rate limiter existente. `pdf-main` además declara `networks: [fast_pdf_network]` para conectarse al resto de servicios.
 
 ---
 
@@ -392,9 +406,7 @@ El breaker envuelve solo las llamadas internas de `clients/*`; el borde público
 
 ---
 
-## Open Questions
+## Coordinación con otros repos
 
-1. **Framework HTTP:** decidí `net/http` stdlib (KISS, sin deps). ¿O preferís `chi`/`gin`?
-2. **Circuit breaker:** el middleware de circuit breaker de Traefik lo va a agregar `pdf-infra` (pendiente del usuario, antes del PLAN). `pdf-main` solo lo referencia vía labels en su `docker-compose`; el nombre del middleware se confirma al coordinar con `pdf-infra`.
-3. **Detalle de error en `failed`:** hoy `status=failed` no guarda el `error` de downstream en persistencia (solo se loguea). ¿Querés persistir un campo `error` para que la web lo muestre?
-4. **`status` en persistencia:** confirmar con `pdf-persistance` que el modelo incluye `status` (ver nota de coordinación arriba).
+1. **`pdf-persistance`** debe agregar `status` y `error` a su modelo (ver nota en la sección DTOs) y es responsable de la limpieza/TTL de documentos `failed`.
+2. **`pdf-infra`** ya expone los middlewares `rate-limit-redis` y `cb-documents`; `pdf-main` solo los referencia por labels.
