@@ -30,17 +30,19 @@
 
 ## Task 2: DTOs del wire + helpers RFC 9457
 
-**Description:** Definir todos los DTOs del contrato (público, validator, extractor, converter, persistance) con tags `snake_case`, y los helpers de Problem Details (RFC 9457) con `Content-Type: application/problem+json`.
+**Description:** Definir todos los DTOs del contrato (público, validator, extractor, converter, persistance) con tags `snake_case`, y los helpers de Problem Details (RFC 9457). Refleja ADR-0005: el contenido es Markdown (`content`), el converter es solo descarga, y no existen los DTOs de conversión/ingesta.
 
 **Acceptance criteria:**
-- [ ] `internal/dto` con structs para `PdfSummary`, `PdfDocument`, y los payloads de validator/extractor/converter/persistance según `docs/spec.md`
-- [ ] Campos binarios tipados como `[]byte` con marshaling a base64 (o `string` para texto); tags `snake_case`
-- [ ] `internal/problem` con `WriteProblem(w, status, title, detail, instance)` y extensiones (`existing_id`)
-- [ ] Test de marshal/unmarshal de cada DTO contra el JSON de ejemplo del spec
+- [ ] `internal/dto` con `PdfSummary`, `PdfDocument` (campo `content` Markdown), y payloads de validator/extractor/converter/persistance
+- [ ] Converter: solo `ConvertRequest{content}` / `ConvertResponse{content_base64, mime_type}` (Markdown→PDF)
+- [ ] Extractor: job `{pdf_id, filename, content_base64}` y result `{pdf_id, status, content}` (Markdown)
+- [ ] Persistance: `content` (Markdown) en lugar de `content_html`
+- [ ] Campos binarios `[]byte` → base64; texto (Markdown) → string; tags `snake_case`
+- [ ] `internal/problem` con `WriteProblem(w, status, title, detail, instance)` + extensión `existing_id`
 
 **Verification:**
 - [ ] `go test ./internal/dto/... ./internal/problem/...`
-- [ ] El JSON producido coincide field por field con los ejemplos del spec
+- [ ] El JSON producido coincide con los ejemplos del spec (sin `content_html` ni `queue:conversion`)
 
 **Dependencies:** Task 1
 
@@ -54,14 +56,14 @@
 
 ## Task 3: Stubs de servicios en `test/`
 
-**Description:** Crear el paquete `test/stubs` con servidores `httptest` falsos para `pdf-validator`, `pdf-persistance` y `pdf-converter`, con respuestas configurables, para poder armar la lógica de negocio sin servicios reales (este es el primer repo).
+**Description:** Crear el paquete `test/stubs` con servidores `httptest` falsos para `pdf-validator`, `pdf-persistance` y `pdf-converter` (solo descarga), para armar la lógica de negocio sin servicios reales (este es el primer repo).
 
 **Acceptance criteria:**
-- [ ] `test/stubs` con stub de validator (devuelve `original_format` + `checksum`, o error 400)
-- [ ] Stub de persistance en memoria (create/get/findByChecksum/list/update/delete con estado)
-- [ ] Stub de converter (ingesta y descarga; devuelve `content_base64` + `mime_type`)
+- [ ] Stub de validator (devuelve `original_format` + `checksum`, o error 400)
+- [ ] Stub de persistance en memoria (create/get/findByChecksum/list/update/delete con estado; `content` Markdown)
+- [ ] Stub de converter (solo descarga: recibe Markdown, devuelve `content_base64` + `mime_type: application/pdf`)
 - [ ] Cada stub expone una URL (`httptest`) y permite inyectar fallos/timeouts
-- [ ] `Queue` fake en memoria (producer/consumer) para tests de orquestación
+- [ ] `Queue` fake en memoria (producer/consumer del stream de extracción) para tests de orquestación
 
 **Verification:**
 - [ ] `go build ./...` compila (el paquete no lo importa `main`, no entra al binario)
@@ -81,11 +83,12 @@
 
 ## Task 4: Ports + clientes HTTP con circuit breaker
 
-**Description:** Definir las interfaces de puerto (`Validator`, `Persistence`, `Converter`, `Queue`) y sus implementaciones HTTP (`clients/*`) wrappeadas con `gobreaker` y timeouts.
+**Description:** Definir las interfaces de puerto (`Validator`, `Persistence`, `Converter`, `Queue`) y sus implementaciones HTTP (`clients/*`) wrappeadas con `gobreaker` y timeouts. El converter es solo descarga (Markdown→PDF).
 
 **Acceptance criteria:**
 - [ ] `internal/orchestrator/ports.go` con las interfaces que consume el núcleo
 - [ ] `internal/clients` implementa validator/persistance/converter con `net/http` + base64 decode/encode
+- [ ] `Converter.Convert(ctx, content)` → `{content_base64, mime_type}` (sin `target_format`)
 - [ ] Cada cliente envuelto en un `gobreaker.CircuitBreaker`; estado abierto → error `ErrDownstream`
 - [ ] Errores de red/timeout/5xx mapeados a `ErrDownstream`; 4xx de negocio (404/409) preservados como errores de dominio
 
@@ -104,13 +107,14 @@
 
 ---
 
-## Task 5: Núcleo de subida (`Submit`)
+## Task 5: Núcleo de subida (`Submit`, dos caminos)
 
-**Description:** Implementar la función pura de orquestación de subida: validar → detectar duplicado → crear `pending` → encolar según formato.
+**Description:** Implementar la función pura de orquestación de subida con dos caminos (ADR-0005): PDF → `pending` + encolar; Markdown → persistir directo `done`.
 
 **Acceptance criteria:**
-- [ ] `Submit` devuelve `PdfSummary` (`status=pending`) y errores de dominio (`ErrInvalid`, `ErrDuplicate`, `ErrDownstream`)
-- [ ] PDF → `PublishExtraction`; Markdown → `PublishConversion` (según `original_format`)
+- [ ] `Submit` devuelve `PdfSummary` y errores de dominio (`ErrInvalid`, `ErrDuplicate`, `ErrDownstream`)
+- [ ] PDF: `Create(status=pending)` + `PublishExtraction` → resumen `pending`
+- [ ] Markdown: `Create(status=done, content=markdown)` síncrono, **sin** llamar a la cola → resumen `done`
 - [ ] Duplicado detectado por `FindByChecksum` → `ErrDuplicate` con `existing_id`
 - [ ] Sin escritura a disco; contenido en memoria
 
@@ -127,14 +131,15 @@
 
 ---
 
-## Task 6: Producer de cola (+ fake en memoria)
+## Task 6: Producer de cola (solo extracción) + fake en memoria
 
-**Description:** Implementar el productor de cola Redis Streams (`XADD`) para `queue:extraction` y `queue:conversion`, con una implementación en memoria para tests.
+**Description:** Implementar el productor de cola Redis Streams (`XADD`) para `queue:extraction` (único stream de entrada).
 
 **Acceptance criteria:**
-- [ ] `queue.Producer` con `PublishExtraction` y `PublishConversion` escribiendo los DTOs del spec como JSON
-- [ ] `XADD` con el job en los campos correctos (base64 para PDF, string para Markdown)
-- [ ] `memory_queue` ya provisto en Task 3 satisface la misma interfaz
+- [ ] `queue.Producer` con `PublishExtraction` escribiendo el DTO de job como JSON
+- [ ] `XADD` con `pdf_id`, `filename`, `content_base64` (base64 del PDF)
+- [ ] `memory_queue` (Task 3) satisface la misma interfaz
+- [ ] No existe `PublishConversion`
 
 **Verification:**
 - [ ] `go test ./internal/queue/...` (fake en memoria); el adapter Redis se deja sin cobertura (integración manual)
@@ -151,16 +156,17 @@
 
 ## Task 7: Handler `POST /api/pdfs` + router chi
 
-**Description:** Montar el router chi y el handler de subida que traduce el `multipart/form-data` al núcleo y mapea errores de dominio a RFC 9457.
+**Description:** Montar el router chi y el handler de subida que traduce el `multipart/form-data` al núcleo y mapea errores de dominio a RFC 9457, devolviendo `200` para ambos formatos.
 
 **Acceptance criteria:**
 - [ ] Router chi con la ruta `POST /api/pdfs` y middleware CORS
 - [ ] Lee `file` + `title` (default = nombre sin extensión) y llama al núcleo
-- [ ] Mapeo: `ErrInvalid`→400, `ErrDuplicate`→409 (+`existing_id`), `ErrDownstream`→503; éxito→202 con `PdfSummary`
+- [ ] Mapeo: `ErrInvalid`→400, `ErrDuplicate`→409 (+`existing_id`), `ErrDownstream`→503
+- [ ] Ambos formatos → `200` (`status` del `PdfSummary`: `pending` para PDF, `done` para Markdown)
 - [ ] Respuestas de error en RFC 9457 (`application/problem+json`)
 
 **Verification:**
-- [ ] `go test ./internal/httpapi/...` con `httptest` + `test/stubs` (202/400/409/503)
+- [ ] `go test ./internal/httpapi/...` con `httptest` + `test/stubs` (200/400/409/503)
 
 **Dependencies:** Task 5, Task 6
 
@@ -182,7 +188,7 @@
 **Acceptance criteria:**
 - [ ] Núcleo `List`, `Get`, `Delete` delegando en `Persistence`
 - [ ] Handlers `GET /api/pdfs`, `GET /api/pdfs/{id}`, `DELETE /api/pdfs/{id}`
-- [ ] `Get` devuelve `PdfDocument` (con `content_html` y `error`); no existe → 404 RFC 9457
+- [ ] `Get` devuelve `PdfDocument` (con `content` Markdown y `error`); no existe → 404 RFC 9457
 - [ ] `Delete` → 204; no existe → 404
 
 **Verification:**
@@ -198,15 +204,17 @@
 
 ---
 
-## Task 9: Descarga (núcleo + handler)
+## Task 9: Descarga (núcleo + handler: passthrough / converter)
 
-**Description:** Implementar la orquestación de descarga: obtener HTML → convertir a `pdf|markdown` → devolver archivo.
+**Description:** Implementar la orquestación de descarga: Markdown se devuelve tal cual; PDF se convierte vía `pdf-converter`.
 
 **Acceptance criteria:**
-- [ ] Núcleo `Download(id, format)` valida formato, obtiene documento, y llama a `Converter.Convert` (HTML → target)
+- [ ] Núcleo `Download(id, format)` valida formato, obtiene documento, y:
+  - `format=markdown` → devuelve `content` tal cual (sin llamar a converter)
+  - `format=pdf` → llama a `Converter.Convert(content)` → bytes PDF
 - [ ] `status != done` → `ErrNotReady` (409 si pending) / `ErrFailed` (422 si failed)
-- [ ] Handler `GET /api/pdfs/{id}/download?format=pdf|markdown` con `Content-Disposition` y `Content-Type` correctos
-- [ ] Formato inválido → 400
+- [ ] Handler `GET /api/pdfs/{id}/download?format=pdf|markdown` con `Content-Disposition` y `Content-Type` (`text/markdown` o `application/pdf`)
+- [ ] Formato inválido → 400; `format` opcional con default `markdown`
 
 **Verification:**
 - [ ] `go test ./internal/orchestrator/... ./internal/httpapi/...` (pdf/markdown, 404, 409, 422, 400)
@@ -221,15 +229,16 @@
 
 ---
 
-## Task 10: Consumers de resultados → actualizar persistencia
+## Task 10: Consumer de `queue:extraction-results` → actualizar persistencia
 
-**Description:** Implementar los consumidores de `queue:extraction-results` y `queue:conversion-results` que actualizan la persistencia con `content_html` + `status` (`done`/`failed`), con una función pura de manejo testeable.
+**Description:** Implementar el consumer de `queue:extraction-results` que actualiza la persistencia con `content` (Markdown) + `status` (`done`/`failed`), con una función pura de manejo testeable.
 
 **Acceptance criteria:**
 - [ ] Función pura `HandleResult(result, persistence)` que mapea un resultado a `Persistence.Update`
-- [ ] Resultado `done` → `{content_html, status:"done"}`; `failed` → `{status:"failed", error:<detail>}`
-- [ ] Adapter Redis con consumer groups (`XREADGROUP`/`XACK`) delgado, sin lógica de negocio
+- [ ] Resultado `done` → `{content, status:"done"}`; `failed` → `{status:"failed", error:<detail>}`
+- [ ] Adapter Redis con consumer group (`XREADGROUP`/`XACK`) delgado, sin lógica de negocio
 - [ ] El `error` persistido es el `detail` (string) del RFC 9457 de downstream
+- [ ] No existe consumer de `queue:conversion-results`
 
 **Verification:**
 - [ ] `go test ./internal/queue/...` (función pura con fake persistence); adapter Redis sin cobertura
@@ -248,11 +257,11 @@
 
 ## Task 11: `main.go` (wiring + graceful shutdown)
 
-**Description:** Ensamblar config, clientes, núcleo, productor, consumidores y server HTTP; graceful shutdown de server + consumidores.
+**Description:** Ensamblar config, clientes, núcleo, productor, consumer y server HTTP; graceful shutdown de server + consumer.
 
 **Acceptance criteria:**
-- [ ] `cmd/pdf-main/main.go` arma el grafo de dependencias y arranca server + goroutines de consumidores
-- [ ] Señales (SIGINT/SIGTERM) → shutdown limpio (context cancel, server + consumers)
+- [ ] `cmd/pdf-main/main.go` arma el grafo de dependencias y arranca server + goroutine del consumer
+- [ ] Señales (SIGINT/SIGTERM) → shutdown limpio (context cancel, server + consumer)
 - [ ] El binario no importa `test/stubs`
 
 **Verification:**
@@ -295,13 +304,13 @@
 
 ### Checkpoint: Milestone 1 — Foundation (tras Tasks 1-3)
 - [ ] `go build ./...` y `go vet ./...` limpios
-- [ ] DTOs y stubs alineados con el spec
+- [ ] DTOs y stubs alineados con el spec (Markdown canónico, sin `queue:conversion`)
 
 ### Checkpoint: Milestone 2 — Subida (tras Tasks 4-7)
-- [ ] POST funciona end-to-end con stubs: 202 / 400 / 409 / 503
+- [ ] POST funciona end-to-end con stubs: 200 (pdf/markdown) / 400 / 409 / 503
 
 ### Checkpoint: Milestone 3 — Flujos completos (tras Tasks 8-10)
-- [ ] CRUD + descarga + consumidores verificados con stubs
+- [ ] CRUD + descarga (passthrough/converter) + consumer verificados con stubs
 
 ### Checkpoint: Milestone 4 — Complete (tras Tasks 11-12)
 - [ ] `gofmt -l .` vacío; `go test ./...` y `go vet ./...` pasan

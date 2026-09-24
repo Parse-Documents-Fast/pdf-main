@@ -6,11 +6,11 @@
 
 `pdf-main` es el **orquestador de la lógica de negocio** del sistema *Parse Documents Fast*. Es el único servicio con ruta pública detrás de `pdf-infra` (Traefik + Redis) y el único que habla con `pdf-persistance`.
 
-Recibe la subida de un documento (PDF o Markdown), lo valida, decide a qué servicio downstream derivarlo, encola el trabajo pesado (extracción o conversión) y expone el resultado persistido para consulta y descarga. No extrae, no convierte, no persiste y no valida por sí mismo: **coordina** a `pdf-validator`, `pdf-extractor`, `pdf-converter` y `pdf-persistance`.
+Recibe la subida de un documento (PDF o Markdown), lo valida, y según el formato: encola la extracción (PDF) o persiste directo (Markdown). Expone el resultado persistido para consulta y descarga, donde el **formato canónico es Markdown** (ADR-0005). No extrae, no convierte, no persiste y no valida por sí mismo: **coordina** a `pdf-validator`, `pdf-extractor`, `pdf-converter` y `pdf-persistance`.
 
 **Usuarios:** el CLI (legacy, en desuso a futuro) y una futura web que consumirá esta API vía HTTP/HTTPS.
 
-**Éxito:** una subida devuelve `202` con el recurso en estado `pending`; el contenido procesado llega asíncronamente y queda persistido como HTML; la descarga lo devuelve convertido a PDF o Markdown; los errores viajan en RFC 9457.
+**Éxito:** una subida devuelve `200`; el PDF queda `pending` y su Markdown llega asíncronamente, el Markdown se persiste directo; la descarga devuelve Markdown tal cual o PDF convertido; los errores viajan en RFC 9457.
 
 ---
 
@@ -19,15 +19,16 @@ Recibe la subida de un documento (PDF o Markdown), lo valida, decide a qué serv
 ### Hace
 
 1. Exponer la API HTTP pública del sistema (subida, listado, detalle, borrado, descarga).
-2. Orquestar la subida: validar → detectar duplicados → crear registro `pending` → encolar.
-3. Orquestar la descarga: pedir HTML → convertir → devolver archivo.
-4. Consumir los streams de resultados (`queue:extraction-results`, `queue:conversion-results`) y actualizar la persistencia.
-5. Traducir errores y timeouts de downstream a RFC 9457 coherente para el cliente.
+2. Orquestar la subida de PDF: validar → detectar duplicados → crear registro `pending` → encolar en `queue:extraction`.
+3. Orquestar la subida de Markdown: validar → detectar duplicados → persistir directo (síncrono, sin cola — ADR-0005).
+4. Orquestar la descarga: pedir Markdown → devolverlo tal cual, o pasarlo por `pdf-converter` (Markdown→PDF).
+5. Consumir `queue:extraction-results` y actualizar la persistencia.
+6. Traducir errores y timeouts de downstream a RFC 9457 coherente para el cliente.
 
 ### No hace
 
-- **No** extrae estructura de PDFs (eso es `pdf-extractor` + `pdf-transformator`).
-- **No** convierte formatos (eso es `pdf-converter`).
+- **No** extrae estructura de PDFs ni arma Markdown (eso es `pdf-extractor`, que absorbió a `pdf-transformator` — ADR-0005).
+- **No** convierte Markdown a PDF (eso es `pdf-converter`).
 - **No** valida contenido (eso es `pdf-validator`).
 - **No** persiste ni habla con MongoDB directamente (eso es `pdf-persistance`).
 - **No** toca disco en ningún punto del flujo — todo en RAM (restricción del profesor).
@@ -38,7 +39,7 @@ Recibe la subida de un documento (PDF o Markdown), lo valida, decide a qué serv
 
 | Componente | Elección | Justificación |
 |---|---|---|
-| Lenguaje | Go (1.24+) | Concurrencia real para atender subidas/descargas simultáneas y N consumers de cola |
+| Lenguaje | Go (1.24+) | Concurrencia real para atender subidas/descargas simultáneas y el consumer de cola |
 | Router HTTP | `github.com/go-chi/chi/v5` | Router ligero, ergonomía de middlewares y path params |
 | Cliente Redis | `go-redis/v9` | Streams con consumer groups (`XREADGROUP`/`XACK`/`XADD`) |
 | HTTP client | `net/http` stdlib | Para hablar con validator/persistance/converter |
@@ -71,7 +72,7 @@ go run ./cmd/pdf-main
 ## Project Structure
 
 ```
-cmd/pdf-main/main.go        → entrypoint: carga config, arma adaptadores, levanta server + consumers
+cmd/pdf-main/main.go        → entrypoint: carga config, arma adaptadores, levanta server + consumer
 internal/
   config/config.go          → config desde variables de entorno
   problem/problem.go        → helpers RFC 9457 (ProblemDetails, WriteProblem)
@@ -94,7 +95,7 @@ internal/
     validator.go
     persistance.go
     converter.go
-  queue/                    → ADAPTADORES de cola (producer + consumers de resultados)
+  queue/                    → ADAPTADORES de cola (producer + consumer de resultados)
     producer.go
     consumer.go
 docs/
@@ -133,33 +134,48 @@ func Submit(ctx context.Context, p Ports, content []byte, filename string) (dto.
     if dup != nil {
         return dto.PdfSummary{}, fmt.Errorf("%w: %s", ErrDuplicate, dup.ID)
     }
-    rec, err := p.Persistence.Create(ctx, dto.PersistCreateRequest{
-        Title:          titleOrFilename(filename),
-        OriginalFormat: v.OriginalFormat,
-        Checksum:       v.Checksum,
-        Status:         dto.StatusPending,
-    })
-    if err != nil {
-        return dto.PdfSummary{}, err
-    }
-    // encolar según el formato detectado
+
     switch v.OriginalFormat {
     case dto.FormatPDF:
-        err = p.Queue.PublishExtraction(ctx, dto.ExtractionJob{...})
+        // PDF: async — crear pending y encolar extracción (ADR-0004/0005)
+        rec, err := p.Persistence.Create(ctx, dto.PersistCreateRequest{
+            Title:          titleOrFilename(filename),
+            OriginalFormat: v.OriginalFormat,
+            Checksum:       v.Checksum,
+            Status:         dto.StatusPending,
+        })
+        if err != nil {
+            return dto.PdfSummary{}, err
+        }
+        if err := p.Queue.PublishExtraction(ctx, dto.ExtractionJob{
+            PdfID: rec.ID, Filename: filename, ContentBase64: base64(content),
+        }); err != nil {
+            return dto.PdfSummary{}, err
+        }
+        return rec.Summary(), nil // → 200 (pending)
+
     case dto.FormatMarkdown:
-        err = p.Queue.PublishConversion(ctx, dto.ConversionJob{...})
+        // Markdown: sync — persistir directo con contenido (ADR-0005)
+        rec, err := p.Persistence.Create(ctx, dto.PersistCreateRequest{
+            Title:          titleOrFilename(filename),
+            OriginalFormat: v.OriginalFormat,
+            Checksum:       v.Checksum,
+            Status:         dto.StatusDone,
+            Content:        string(content),
+        })
+        if err != nil {
+            return dto.PdfSummary{}, err
+        }
+        return rec.Summary(), nil // → 200 (done)
     }
-    if err != nil {
-        return dto.PdfSummary{}, err
-    }
-    return rec.Summary(), nil
+    return dto.PdfSummary{}, ErrInvalid
 }
 ```
 
 Convenciones:
-- Errores de dominio como sentinelas (`ErrDuplicate`, `ErrNotFound`, `ErrDownstream`) que los adaptadores mapean a status HTTP.
+- Errores de dominio como sentinelas (`ErrInvalid`, `ErrDuplicate`, `ErrNotFound`, `ErrDownstream`) que los adaptadores mapean a status HTTP.
 - Los adaptadores traducen a RFC 9457 (ADR-0001); el núcleo no conoce HTTP.
-- Binario siempre base64 en el wire (ADR-0002); texto plano (HTML, Markdown) viaja como string.
+- Binario siempre base64 en el wire (ADR-0002); texto plano (Markdown) viaja como string.
 - Contextos con timeout en toda llamada downstream.
 
 ---
@@ -171,7 +187,7 @@ Convenciones:
 - Tests de handlers validan: status code, body RFC 9457, headers (`Content-Disposition`), y mapeo de errores de dominio → HTTP.
 - Niveles:
   - **Unit** (núcleo + mapeo de errores): tabla-driven.
-  - **HTTP** (handlers con `httptest` + mocks): subida 202, duplicado 409, not-found 404, descarga con formato.
+  - **HTTP** (handlers con `httptest` + mocks): subida 200, duplicado 409, not-found 404, descarga con formato.
   - **Integración manual** (opcional, no en CI): contra `pdf-infra` + los demás servicios levantados.
 - Cobertura objetivo: núcleo y mapeo de errores ≥ 90%; no se persigue cobertura sobre adaptadores de Redis real.
 
@@ -184,7 +200,7 @@ Convenciones:
 ### Contrato público (cliente ↔ pdf-main)
 
 ```jsonc
-// PdfSummary — respuesta de POST /api/pdfs (202) y GET /api/pdfs (200)
+// PdfSummary — respuesta de POST /api/pdfs (200, PDF o Markdown) y GET /api/pdfs (200)
 {
   "id": "665f1a2b3c4d5e6f7a8b9c0d",
   "title": "informe",
@@ -194,7 +210,7 @@ Convenciones:
   "created_at": "2026-09-18T10:00:00Z"
 }
 
-// PdfDocument — respuesta de GET /api/pdfs/{id} (200): PdfSummary + content_html
+// PdfDocument — respuesta de GET /api/pdfs/{id} (200): PdfSummary + content
 {
   "id": "...",
   "title": "...",
@@ -202,8 +218,8 @@ Convenciones:
   "checksum": "...",
   "status": "done",
   "created_at": "...",
-  "content_html": "<h1>Título</h1><p>texto…</p>",  // null mientras pending / failed
-  "error": null                                  // string corto, solo cuando status="failed"
+  "content": "# Título\n\ntexto…",      // Markdown; null mientras pending / failed
+  "error": null                          // string corto, solo cuando status="failed"
 }
 ```
 
@@ -224,28 +240,23 @@ Convenciones:
 // job en queue:extraction
 { "pdf_id": "665f…", "filename": "informe.pdf", "content_base64": "JVBERi0xLjQK…" }
 
-// resultado en queue:extraction-results
-{ "pdf_id": "665f…", "status": "done", "content_html": "<h1>…</h1>" }
+// resultado en queue:extraction-results (Markdown ya armado, ADR-0005)
+{ "pdf_id": "665f…", "status": "done", "content": "# Título\n\ntexto…" }
 // o, ante error:
 { "pdf_id": "665f…", "status": "failed", "error": { /* RFC 9457 */ } }
 ```
 
-### `pdf-converter` (cola + HTTP síncrono)
+### `pdf-converter` (HTTP síncrono — solo descarga)
 
 ```jsonc
-// job en queue:conversion (ingesta, Markdown → HTML)
-{ "pdf_id": "665f…", "filename": "nota.md", "content": "# Título\n…" }
-
-// resultado en queue:conversion-results
-{ "pdf_id": "665f…", "status": "done", "content_html": "<h1>Título</h1>…" }
-// o { "pdf_id": "…", "status": "failed", "error": { /* RFC 9457 */ } }
-
-// request de descarga (HTTP síncrono, HTML → formato)
-{ "content_html": "<h1>…</h1>", "target_format": "pdf" }  // "pdf" | "markdown"
+// request de descarga (Markdown → PDF)
+{ "content": "# Título\n\ntexto…" }
 
 // response de descarga (200)
 { "content_base64": "JVBERi0xLjQK…", "mime_type": "application/pdf" }
 ```
+
+> `pdf-converter` ya no tiene ingesta (ADR-0005): `queue:conversion` y `queue:conversion-results` **no existen**.
 
 ### `pdf-persistance` (HTTP síncrono)
 
@@ -260,18 +271,18 @@ Convenciones:
   "original_format": "pdf",
   "checksum": "…",
   "status": "pending",
-  "content_html": null,
+  "content": null,          // Markdown (string), no binario
   "error": null,
   "created_at": "2026-09-18T10:00:00Z"
 }
 
 // update (PATCH) — cuando llega un resultado de cola
-{ "content_html": "<h1>…</h1>", "status": "done" }
+{ "content": "# Título\n\ntexto…", "status": "done" }
 // o, ante fallo:
 { "status": "failed", "error": "No se pudo extraer texto del PDF" }
 ```
 
-> **Nota de coordinación:** el plan de `pdf-persistance` lista el modelo como `content_html, checksum, original_format, title, created_at`. Este spec le **agrega `status` y `error`** (necesarios porque el flujo es asíncrono y la web debe poder mostrar el motivo del fallo). Quedan como requisito para `pdf-persistance`. La **limpieza/TTL de documentos `failed` es responsabilidad de `pdf-persistance`, no de `pdf-main`**.
+> **Nota de coordinación:** el plan de `pdf-persistance` lista el modelo como `content, checksum, original_format, title, created_at`. Este spec le **agrega `status` y `error`** (necesarios porque la subida de PDF es asíncrona y la web debe poder mostrar el motivo del fallo). Quedan como requisito para `pdf-persistance`. La **limpieza/TTL de documentos `failed` es responsabilidad de `pdf-persistance`, no de `pdf-main`**.
 
 ---
 
@@ -279,41 +290,49 @@ Convenciones:
 
 | Método | Path | Éxito | Errores (RFC 9457) |
 |---|---|---|---|
-| `POST` | `/api/pdfs` | `202` `PdfSummary` (status `pending`) | `400` inválido, `409` duplicado (con `existing_id`), `503` downstream |
+| `POST` | `/api/pdfs` | `200` `PdfSummary` (PDF: `pending`; Markdown: `done`) | `400` inválido, `409` duplicado (con `existing_id`), `503` downstream |
 | `GET` | `/api/pdfs` | `200` `[PdfSummary]` | — |
 | `GET` | `/api/pdfs/{id}` | `200` `PdfDocument` | `404` no existe |
 | `DELETE` | `/api/pdfs/{id}` | `204` | `404` no existe |
 | `GET` | `/api/pdfs/{id}/download?format=pdf\|markdown` | `200` archivo (`Content-Disposition: attachment; filename="{title}.{ext}"`) | `404`, `409` aún `pending`, `422` si `failed`, `400` formato inválido |
 
 - Subida: `multipart/form-data` con `file` (binario) + `title` (opcional, default = nombre del archivo sin extensión).
+- `format` en la descarga es opcional; default `markdown` (el formato canónico, sin conversión).
 - CORS: `allow all` (la futura web lo necesita); se puede ajustar después.
 
 ---
 
-## Flujo de subida (async)
+## Flujo de subida (dos caminos — ADR-0005)
 
 ```
 POST /api/pdfs
-  → pdf-validator.Validate (HTTP sync)          → clasifica + checksum  → 400 si inválido
-  → pdf-persistance.FindByChecksum (HTTP sync)  → 409 si duplicado
-  → pdf-persistance.Create (HTTP sync)          → record status="pending"
-  → enqueue:
-        pdf      → queue:extraction   (pdf-extractor → pdf-transformator → HTML)
-        markdown → queue:conversion   (pdf-converter → HTML)
-  → 202 PdfSummary(status=pending)
+  → pdf-validator.Validate (HTTP sync)           → clasifica + checksum  → 400 si inválido
+  → pdf-persistance.FindByChecksum (HTTP sync)   → 409 si duplicado
+  ── según original_format:
+  │ pdf:
+  │   → pdf-persistance.Create(status=pending)
+  │   → queue:extraction (job con content_base64)
+  │   → 200 PdfSummary(status=pending)
+  │
+  │ markdown:
+  │   → pdf-persistance.Create(status=done, content=markdown)   // síncrono, sin cola
+  │   → 200 PdfSummary(status=done)
+```
 
-Después (async):
-  pdf-main consume queue:extraction-results / queue:conversion-results
-    → pdf-persistance.Update(content_html, status="done" | "failed")
+```
+Después (async, solo PDF):
+  pdf-main consume queue:extraction-results
+    → pdf-persistance.Update(content=markdown, status="done" | "failed")
 ```
 
 ## Flujo de descarga (sync)
 
 ```
 GET /api/pdfs/{id}/download?format=pdf|markdown
-  → pdf-persistance.Get(id)            → content_html + title   → 404 si no existe
+  → pdf-persistance.Get(id)            → content (Markdown) + title   → 404 si no existe
   → status != "done"                   → 409 (pending) / 422 (failed)
-  → pdf-converter.Convert (HTTP sync)  → HTML → pdf|markdown
+  → format=markdown: devolver content tal cual (text/markdown)        // sin converter
+  → format=pdf:     pdf-converter.Convert (Markdown → PDF)            // HTTP sync
   → devolver archivo (Content-Disposition)
 ```
 
@@ -348,7 +367,7 @@ El breaker envuelve solo las llamadas internas de `clients/*`; el borde público
 | `REDIS_QUEUE_ADDR` | `redis-queue:6379` | Redis de colas (ADR-0004) |
 | `MAX_FILE_SIZE_MB` | `10` | Tope de tamaño heredado del monolito |
 
-**Streams (constantes, ADR-0004):** `queue:extraction`, `queue:extraction-results`, `queue:conversion`, `queue:conversion-results`, con consumer groups y `XACK`.
+**Streams (constantes, ADR-0004 + ADR-0005):** solo `queue:extraction` y `queue:extraction-results`, con consumer group y `XACK`. (`queue:conversion*` eliminados.)
 
 **Traefik:** `pdf-main` declara en su `docker-compose.yml` los labels de enrutado (`Host(api.pdfmanager.local)`, entrypoint `websecure`, TLS) y encadena los middlewares que define `pdf-infra` por file provider:
 
@@ -369,7 +388,7 @@ El middleware `cb-documents` es el circuit breaker de Traefik (ya configurado en
 
 - **Always:**
   - `gofmt` + `go test ./...` + `go vet ./...` antes de commit.
-  - JSON tags `snake_case` (ADR-0002); binario en base64; texto (HTML/MD) como string.
+  - JSON tags `snake_case` (ADR-0002); binario en base64; texto (Markdown) como string.
   - Errores al cliente en RFC 9457 (ADR-0001).
   - Núcleo (`orchestrator`) sin conocimiento de HTTP ni cola (ADR-0004).
   - Todo en RAM: nunca escribir a disco.
@@ -386,23 +405,24 @@ El middleware `cb-documents` es el circuit breaker de Traefik (ya configurado en
   - Commitear secretos / `.env`.
   - Escribir archivos temporales en disco.
   - Hablar con MongoDB directamente (siempre vía `pdf-persistance`).
-  - Hablar con `pdf-extractor` o `pdf-transformator` directamente.
+  - Hablar con `pdf-extractor` directamente (solo vía cola).
   - Exponer puerto al host (solo accesible vía Traefik).
 
 ---
 
 ## Success Criteria
 
-1. `POST /api/pdfs` con un PDF válido responde `202` con `PdfSummary` (`status=pending`) y, tras el async, `GET /api/pdfs/{id}` muestra `status=done` con `content_html` poblado.
-2. Un PDF con magic bytes inválidos responde `400` RFC 9457 (`title: "Archivo inválido"`).
-3. Subir el mismo contenido dos veces responde `409` con `existing_id`.
-4. Un Markdown válido pasa por `queue:conversion` (no por extracción) y persiste HTML.
-5. `GET /api/pdfs/{id}/download?format=pdf` devuelve `application/pdf`; `format=markdown` devuelve `text/markdown`; ambos con `Content-Disposition`.
-6. Descargar un documento aún `pending` → `409`; uno `failed` → `422`.
-7. `GET /api/pdfs/{id}` inexistente → `404`; `DELETE` → `204`.
-8. Un timeout/5xx de un servicio downstream se traduce a `503` RFC 9457 (no un panic ni un stack trace).
-9. `gofmt -l .` no reporta nada; `go test ./...` y `go vet ./...` pasan.
-10. Con el breaker en estado abierto, una llamada a un servicio downstream falla rápido con `503` RFC 9457, sin esperar el timeout.
+1. `POST /api/pdfs` con un PDF válido responde `200` (`status=pending`) y, tras el async, `GET /api/pdfs/{id}` muestra `status=done` con `content` (Markdown) poblado.
+2. `POST /api/pdfs` con un Markdown válido responde `200` (`status=done`) con el `content` persistido síncronamente, sin pasar por cola.
+3. Un archivo con magic bytes inválidos responde `400` RFC 9457 (`title: "Archivo inválido"`).
+4. Subir el mismo contenido dos veces responde `409` con `existing_id`.
+5. Un Markdown no publica nada en `queue:extraction` (persiste directo).
+6. `GET /api/pdfs/{id}/download?format=pdf` devuelve `application/pdf` (vía `pdf-converter`); `format=markdown` devuelve `text/markdown` (passthrough); ambos con `Content-Disposition`.
+7. Descargar un documento aún `pending` → `409`; uno `failed` → `422`.
+8. `GET /api/pdfs/{id}` inexistente → `404`; `DELETE` → `204`.
+9. Un timeout/5xx de un servicio downstream se traduce a `503` RFC 9457 (no un panic ni un stack trace).
+10. `gofmt -l .` no reporta nada; `go test ./...` y `go vet ./...` pasan.
+11. Con el breaker en estado abierto, una llamada a un servicio downstream falla rápido con `503` RFC 9457, sin esperar el timeout.
 
 ---
 
@@ -410,3 +430,4 @@ El middleware `cb-documents` es el circuit breaker de Traefik (ya configurado en
 
 1. **`pdf-persistance`** debe agregar `status` y `error` a su modelo (ver nota en la sección DTOs) y es responsable de la limpieza/TTL de documentos `failed`.
 2. **`pdf-infra`** ya expone los middlewares `rate-limit-redis` y `cb-documents`; `pdf-main` solo los referencia por labels.
+3. **`pdf-extractor`** (fusionado con `pdf-transformator`, ADR-0005) produce `content` (Markdown) en `queue:extraction-results`, no HTML.
