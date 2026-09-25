@@ -13,10 +13,10 @@ import (
 	"github.com/Parse-Documents-Fast/pdf-main/internal/problem"
 )
 
-// PersistanceStub is an in-memory fake of pdf-persistance. It stores records
+// PersistenceStub is an in-memory fake of pdf-persistence. It stores records
 // keyed by an auto-incrementing ID and supports the full CRUD surface used by
 // pdf-main: create, get, find-by-checksum, list, update and delete.
-type PersistanceStub struct {
+type PersistenceStub struct {
 	*httptest.Server
 
 	mu      sync.Mutex
@@ -29,10 +29,10 @@ type PersistanceStub struct {
 	FailStatus int
 }
 
-// NewPersistanceStub starts a persistance stub on a random port. Callers must
+// NewPersistenceStub starts a persistence stub on a random port. Callers must
 // Close it when done.
-func NewPersistanceStub() *PersistanceStub {
-	s := &PersistanceStub{records: make(map[string]dto.PersistRecord)}
+func NewPersistenceStub() *PersistenceStub {
+	s := &PersistenceStub{records: make(map[string]dto.PersistRecord)}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST "+dto.PathPersistDocuments, s.create)
@@ -56,13 +56,13 @@ func NewPersistanceStub() *PersistanceStub {
 }
 
 // Reset clears all stored records, useful between test cases.
-func (s *PersistanceStub) Reset() {
+func (s *PersistenceStub) Reset() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.records = make(map[string]dto.PersistRecord)
 }
 
-func (s *PersistanceStub) create(w http.ResponseWriter, r *http.Request) {
+func (s *PersistenceStub) create(w http.ResponseWriter, r *http.Request) {
 	var req dto.PersistCreateRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		problem.WriteProblem(w, http.StatusBadRequest, "Invalid request", err.Error(), r.URL.Path)
@@ -86,7 +86,7 @@ func (s *PersistanceStub) create(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, rec)
 }
 
-func (s *PersistanceStub) list(w http.ResponseWriter, r *http.Request) {
+func (s *PersistenceStub) list(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -107,7 +107,7 @@ func (s *PersistanceStub) list(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
-func (s *PersistanceStub) findByChecksum(w http.ResponseWriter, r *http.Request) {
+func (s *PersistenceStub) findByChecksum(w http.ResponseWriter, r *http.Request) {
 	checksum := r.URL.Query().Get("checksum")
 
 	s.mu.Lock()
@@ -121,7 +121,7 @@ func (s *PersistanceStub) findByChecksum(w http.ResponseWriter, r *http.Request)
 	problem.WriteProblem(w, http.StatusNotFound, "Not found", "no document with checksum "+checksum, r.URL.Path)
 }
 
-func (s *PersistanceStub) get(w http.ResponseWriter, r *http.Request) {
+func (s *PersistenceStub) get(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
 	s.mu.Lock()
@@ -134,7 +134,7 @@ func (s *PersistanceStub) get(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, rec)
 }
 
-func (s *PersistanceStub) update(w http.ResponseWriter, r *http.Request) {
+func (s *PersistenceStub) update(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
 	var req dto.PersistUpdateRequest
@@ -161,7 +161,7 @@ func (s *PersistanceStub) update(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, rec)
 }
 
-func (s *PersistanceStub) del(w http.ResponseWriter, r *http.Request) {
+func (s *PersistenceStub) del(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
 	s.mu.Lock()

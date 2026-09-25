@@ -15,7 +15,7 @@ import (
 type env struct {
 	ports        orchestrator.Ports
 	validator    *stubs.ValidatorStub
-	persistence  *stubs.PersistanceStub
+	persistence  *stubs.PersistenceStub
 	queue        *stubs.MemoryQueue
 	persistCache *clients.Persistence
 }
@@ -26,7 +26,7 @@ func newEnv(t *testing.T) *env {
 	t.Helper()
 
 	vs := stubs.NewValidatorStub()
-	ps := stubs.NewPersistanceStub()
+	ps := stubs.NewPersistenceStub()
 	q := stubs.NewMemoryQueue()
 	pc := clients.NewPersistence(ps.URL)
 

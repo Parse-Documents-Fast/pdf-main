@@ -10,7 +10,7 @@ import (
 	"github.com/Parse-Documents-Fast/pdf-main/internal/orchestrator"
 )
 
-// Persistence is the HTTP client for pdf-persistance.
+// Persistence is the HTTP client for pdf-persistence.
 type Persistence struct {
 	hc *httpClient
 }

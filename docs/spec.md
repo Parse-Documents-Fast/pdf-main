@@ -4,9 +4,9 @@
 
 ## Objective
 
-`pdf-main` es el **orquestador de la lógica de negocio** del sistema *Parse Documents Fast*. Es el único servicio con ruta pública detrás de `pdf-infra` (Traefik + Redis) y el único que habla con `pdf-persistance`.
+`pdf-main` es el **orquestador de la lógica de negocio** del sistema *Parse Documents Fast*. Es el único servicio con ruta pública detrás de `pdf-infra` (Traefik + Redis) y el único que habla con `pdf-persistence`.
 
-Recibe la subida de un documento (PDF o Markdown), lo valida, y según el formato: encola la extracción (PDF) o persiste directo (Markdown). Expone el resultado persistido para consulta y descarga, donde el **formato canónico es Markdown** (ADR-0005). No extrae, no convierte, no persiste y no valida por sí mismo: **coordina** a `pdf-validator`, `pdf-extractor`, `pdf-converter` y `pdf-persistance`.
+Recibe la subida de un documento (PDF o Markdown), lo valida, y según el formato: encola la extracción (PDF) o persiste directo (Markdown). Expone el resultado persistido para consulta y descarga, donde el **formato canónico es Markdown** (ADR-0005). No extrae, no convierte, no persiste y no valida por sí mismo: **coordina** a `pdf-validator`, `pdf-extractor`, `pdf-converter` y `pdf-persistence`.
 
 **Usuarios:** el CLI (legacy, en desuso a futuro) y una futura web que consumirá esta API vía HTTP/HTTPS.
 
@@ -30,7 +30,7 @@ Recibe la subida de un documento (PDF o Markdown), lo valida, y según el format
 - **No** extrae estructura de PDFs ni arma Markdown (eso es `pdf-extractor`, que absorbió a `pdf-transformator` — ADR-0005).
 - **No** convierte Markdown a PDF (eso es `pdf-converter`).
 - **No** valida contenido (eso es `pdf-validator`).
-- **No** persiste ni habla con MongoDB directamente (eso es `pdf-persistance`).
+- **No** persiste ni habla con MongoDB directamente (eso es `pdf-persistence`).
 - **No** toca disco en ningún punto del flujo — todo en RAM (restricción del profesor).
 
 ---
@@ -42,9 +42,9 @@ Recibe la subida de un documento (PDF o Markdown), lo valida, y según el format
 | Lenguaje | Go (1.24+) | Concurrencia real para atender subidas/descargas simultáneas y el consumer de cola |
 | Router HTTP | `github.com/go-chi/chi/v5` | Router ligero, ergonomía de middlewares y path params |
 | Cliente Redis | `go-redis/v9` | Streams con consumer groups (`XREADGROUP`/`XACK`/`XADD`) |
-| HTTP client | `net/http` stdlib | Para hablar con validator/persistance/converter |
+| HTTP client | `net/http` stdlib | Para hablar con validator/persistence/converter |
 | Circuit breaker | `github.com/sony/gobreaker` | Envuelve las llamadas HTTP internas a downstream (resiliencia interna) |
-| MongoDB | *ninguno* | `pdf-main` no toca Mongo: pasa por `pdf-persistance` |
+| MongoDB | *ninguno* | `pdf-main` no toca Mongo: pasa por `pdf-persistence` |
 
 **Dependencias externas:** `github.com/go-chi/chi/v5`, `github.com/redis/go-redis/v9` y `github.com/sony/gobreaker`. Módulo: `github.com/Parse-Documents-Fast/pdf-main`.
 
@@ -77,7 +77,7 @@ internal/
   config/config.go          → config desde variables de entorno
   problem/problem.go        → helpers RFC 9457 (ProblemDetails, WriteProblem)
   dto/                      → DTOs del wire (snake_case) entre pdf-main y los demás servicios
-    documents.go            → contrato público + contrato de pdf-persistance
+    documents.go            → contrato público + contrato de pdf-persistence
     validator.go
     extractor.go
     converter.go
@@ -93,7 +93,7 @@ internal/
     handler_query.go
   clients/                  → ADAPTADORES: clientes HTTP a servicios downstream
     validator.go
-    persistance.go
+    persistence.go
     converter.go
   queue/                    → ADAPTADORES de cola (producer + consumer de resultados)
     producer.go
@@ -258,7 +258,7 @@ Convenciones:
 
 > `pdf-converter` ya no tiene ingesta (ADR-0005): `queue:conversion` y `queue:conversion-results` **no existen**.
 
-### `pdf-persistance` (HTTP síncrono)
+### `pdf-persistence` (HTTP síncrono)
 
 ```jsonc
 // create (POST)
@@ -282,7 +282,7 @@ Convenciones:
 { "status": "failed", "error": "No se pudo extraer texto del PDF" }
 ```
 
-> **Nota de coordinación:** el plan de `pdf-persistance` lista el modelo como `content, checksum, original_format, title, created_at`. Este spec le **agrega `status` y `error`** (necesarios porque la subida de PDF es asíncrona y la web debe poder mostrar el motivo del fallo). Quedan como requisito para `pdf-persistance`. La **limpieza/TTL de documentos `failed` es responsabilidad de `pdf-persistance`, no de `pdf-main`**.
+> **Nota de coordinación:** el plan de `pdf-persistence` lista el modelo como `content, checksum, original_format, title, created_at`. Este spec le **agrega `status` y `error`** (necesarios porque la subida de PDF es asíncrona y la web debe poder mostrar el motivo del fallo). Quedan como requisito para `pdf-persistence`. La **limpieza/TTL de documentos `failed` es responsabilidad de `pdf-persistence`, no de `pdf-main`**.
 
 ---
 
@@ -307,29 +307,29 @@ Convenciones:
 ```
 POST /api/pdfs
   → pdf-validator.Validate (HTTP sync)           → clasifica + checksum  → 400 si inválido
-  → pdf-persistance.FindByChecksum (HTTP sync)   → 409 si duplicado
+  → pdf-persistence.FindByChecksum (HTTP sync)   → 409 si duplicado
   ── según original_format:
   │ pdf:
-  │   → pdf-persistance.Create(status=pending)
+  │   → pdf-persistence.Create(status=pending)
   │   → queue:extraction (job con content_base64)
   │   → 200 PdfSummary(status=pending)
   │
   │ markdown:
-  │   → pdf-persistance.Create(status=done, content=markdown)   // síncrono, sin cola
+  │   → pdf-persistence.Create(status=done, content=markdown)   // síncrono, sin cola
   │   → 200 PdfSummary(status=done)
 ```
 
 ```
 Después (async, solo PDF):
   pdf-main consume queue:extraction-results
-    → pdf-persistance.Update(content=markdown, status="done" | "failed")
+    → pdf-persistence.Update(content=markdown, status="done" | "failed")
 ```
 
 ## Flujo de descarga (sync)
 
 ```
 GET /api/pdfs/{id}/download?format=pdf|markdown
-  → pdf-persistance.Get(id)            → content (Markdown) + title   → 404 si no existe
+  → pdf-persistence.Get(id)            → content (Markdown) + title   → 404 si no existe
   → status != "done"                   → 409 (pending) / 422 (failed)
   → format=markdown: devolver content tal cual (text/markdown)        // sin converter
   → format=pdf:     pdf-converter.Convert (Markdown → PDF)            // HTTP sync
@@ -340,7 +340,7 @@ GET /api/pdfs/{id}/download?format=pdf|markdown
 
 ## Resiliencia interna (circuit breaker en Go)
 
-Además del middleware de circuit breaker de Traefik (borde público, en `pdf-infra`), `pdf-main` protege sus llamadas internas a downstream con `gobreaker`, uno por cliente HTTP (`validator`, `converter`, `persistance`):
+Además del middleware de circuit breaker de Traefik (borde público, en `pdf-infra`), `pdf-main` protege sus llamadas internas a downstream con `gobreaker`, uno por cliente HTTP (`validator`, `converter`, `persistence`):
 
 - **Cerrado**: las llamadas fluyen normal; se contabilizan los fallos (5xx, timeout, error de red).
 - **Abierto**: tras superar el umbral de fallos, `pdf-main` responde `503` RFC 9457 de inmediato, sin esperar el timeout ni tocar downstream.
@@ -362,7 +362,7 @@ El breaker envuelve solo las llamadas internas de `clients/*`; el borde público
 |---|---|---|
 | `HTTP_ADDR` | `:8000` | Puerto interno de escucha (detrás de Traefik, no expuesto al host) |
 | `VALIDATOR_URL` | `http://pdf-validator:8000` | Base URL de `pdf-validator` |
-| `PERSISTENCE_URL` | `http://pdf-persistance:8000` | Base URL de `pdf-persistance` |
+| `PERSISTENCE_URL` | `http://pdf-persistence:8000` | Base URL de `pdf-persistence` |
 | `CONVERTER_URL` | `http://pdf-converter:8000` | Base URL de `pdf-converter` |
 | `REDIS_QUEUE_ADDR` | `redis-queue:6379` | Redis de colas (ADR-0004) |
 | `MAX_FILE_SIZE_MB` | `10` | Tope de tamaño heredado del monolito |
@@ -398,13 +398,13 @@ El middleware `cb-documents` es el circuit breaker de Traefik (ya configurado en
   - Cambiar un field name de un DTO (es contrato compartido con otros servicios).
   - Agregar una dependencia de módulo nueva.
   - Cambiar nombres de streams / consumer groups.
-  - Cambiar el modelo de persistencia (implica coordinar con `pdf-persistance`).
+  - Cambiar el modelo de persistencia (implica coordinar con `pdf-persistence`).
   - Bump de versión de Go.
 
 - **Never:**
   - Commitear secretos / `.env`.
   - Escribir archivos temporales en disco.
-  - Hablar con MongoDB directamente (siempre vía `pdf-persistance`).
+  - Hablar con MongoDB directamente (siempre vía `pdf-persistence`).
   - Hablar con `pdf-extractor` directamente (solo vía cola).
   - Exponer puerto al host (solo accesible vía Traefik).
 
@@ -428,6 +428,6 @@ El middleware `cb-documents` es el circuit breaker de Traefik (ya configurado en
 
 ## Coordinación con otros repos
 
-1. **`pdf-persistance`** debe agregar `status` y `error` a su modelo (ver nota en la sección DTOs) y es responsable de la limpieza/TTL de documentos `failed`.
+1. **`pdf-persistence`** debe agregar `status` y `error` a su modelo (ver nota en la sección DTOs) y es responsable de la limpieza/TTL de documentos `failed`.
 2. **`pdf-infra`** ya expone los middlewares `rate-limit-redis` y `cb-documents`; `pdf-main` solo los referencia por labels.
 3. **`pdf-extractor`** (fusionado con `pdf-transformator`, ADR-0005) produce `content` (Markdown) en `queue:extraction-results`, no HTML.

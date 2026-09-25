@@ -22,7 +22,7 @@ type Config struct {
 	// ValidatorURL is the base URL of pdf-validator.
 	ValidatorURL string
 
-	// PersistenceURL is the base URL of pdf-persistance.
+	// PersistenceURL is the base URL of pdf-persistence.
 	PersistenceURL string
 
 	// ConverterURL is the base URL of pdf-converter (download-only).
@@ -44,7 +44,7 @@ func Load() Config {
 	return Config{
 		HTTPAddr:       getEnv("HTTP_ADDR", ":8000"),
 		ValidatorURL:   getEnv("VALIDATOR_URL", "http://pdf-validator:8000"),
-		PersistenceURL: getEnv("PERSISTENCE_URL", "http://pdf-persistance:8000"),
+		PersistenceURL: getEnv("PERSISTENCE_URL", "http://pdf-persistence:8000"),
 		ConverterURL:   getEnv("CONVERTER_URL", "http://pdf-converter:8000"),
 		RedisQueueAddr: getEnv("REDIS_QUEUE_ADDR", "redis-queue:6379"),
 		MaxFileSizeMB:  getEnvInt("MAX_FILE_SIZE_MB", 10),

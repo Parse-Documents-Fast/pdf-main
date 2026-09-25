@@ -1,5 +1,5 @@
 // Package clients contains the HTTP adapters that talk to the downstream
-// services (pdf-validator, pdf-persistance, pdf-converter). Each client wraps
+// services (pdf-validator, pdf-persistence, pdf-converter). Each client wraps
 // its calls in a circuit breaker: transport errors, timeouts and 5xx trip the
 // breaker and surface as orchestrator.ErrDownstream; 4xx business errors are
 // returned untouched so callers can map them to domain errors without tripping

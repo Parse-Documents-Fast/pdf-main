@@ -15,7 +15,7 @@ type Validator interface {
 	Validate(ctx context.Context, content []byte, filename string) (dto.ValidateResponse, error)
 }
 
-// Persistence is the gateway to pdf-persistance. Implemented by
+// Persistence is the gateway to pdf-persistence. Implemented by
 // clients.Persistence.
 type Persistence interface {
 	Create(ctx context.Context, req dto.PersistCreateRequest) (dto.PersistRecord, error)

@@ -8,7 +8,7 @@ import (
 var defaultConfig = Config{
 	HTTPAddr:       ":8000",
 	ValidatorURL:   "http://pdf-validator:8000",
-	PersistenceURL: "http://pdf-persistance:8000",
+	PersistenceURL: "http://pdf-persistence:8000",
 	ConverterURL:   "http://pdf-converter:8000",
 	RedisQueueAddr: "redis-queue:6379",
 	MaxFileSizeMB:  10,

@@ -30,13 +30,13 @@
 
 ## Task 2: DTOs del wire + helpers RFC 9457
 
-**Description:** Definir todos los DTOs del contrato (público, validator, extractor, converter, persistance) con tags `snake_case`, y los helpers de Problem Details (RFC 9457). Refleja ADR-0005: el contenido es Markdown (`content`), el converter es solo descarga, y no existen los DTOs de conversión/ingesta.
+**Description:** Definir todos los DTOs del contrato (público, validator, extractor, converter, persistence) con tags `snake_case`, y los helpers de Problem Details (RFC 9457). Refleja ADR-0005: el contenido es Markdown (`content`), el converter es solo descarga, y no existen los DTOs de conversión/ingesta.
 
 **Acceptance criteria:**
-- [ ] `internal/dto` con `PdfSummary`, `PdfDocument` (campo `content` Markdown), y payloads de validator/extractor/converter/persistance
+- [ ] `internal/dto` con `PdfSummary`, `PdfDocument` (campo `content` Markdown), y payloads de validator/extractor/converter/persistence
 - [ ] Converter: solo `ConvertRequest{content}` / `ConvertResponse{content_base64, mime_type}` (Markdown→PDF)
 - [ ] Extractor: job `{pdf_id, filename, content_base64}` y result `{pdf_id, status, content}` (Markdown)
-- [ ] Persistance: `content` (Markdown) en lugar de `content_html`
+- [ ] Persistence: `content` (Markdown) en lugar de `content_html`
 - [ ] Campos binarios `[]byte` → base64; texto (Markdown) → string; tags `snake_case`
 - [ ] `internal/problem` con `WriteProblem(w, status, title, detail, instance)` + extensión `existing_id`
 
@@ -56,11 +56,11 @@
 
 ## Task 3: Stubs de servicios en `test/`
 
-**Description:** Crear el paquete `test/stubs` con servidores `httptest` falsos para `pdf-validator`, `pdf-persistance` y `pdf-converter` (solo descarga), para armar la lógica de negocio sin servicios reales (este es el primer repo).
+**Description:** Crear el paquete `test/stubs` con servidores `httptest` falsos para `pdf-validator`, `pdf-persistence` y `pdf-converter` (solo descarga), para armar la lógica de negocio sin servicios reales (este es el primer repo).
 
 **Acceptance criteria:**
 - [ ] Stub de validator (devuelve `original_format` + `checksum`, o error 400)
-- [ ] Stub de persistance en memoria (create/get/findByChecksum/list/update/delete con estado; `content` Markdown)
+- [ ] Stub de persistence en memoria (create/get/findByChecksum/list/update/delete con estado; `content` Markdown)
 - [ ] Stub de converter (solo descarga: recibe Markdown, devuelve `content_base64` + `mime_type: application/pdf`)
 - [ ] Cada stub expone una URL (`httptest`) y permite inyectar fallos/timeouts
 - [ ] `Queue` fake en memoria (producer/consumer del stream de extracción) para tests de orquestación
@@ -72,7 +72,7 @@
 **Dependencies:** Task 2
 
 **Files likely touched:**
-- `test/stubs/validator_stub.go`, `test/stubs/persistance_stub.go`, `test/stubs/converter_stub.go`
+- `test/stubs/validator_stub.go`, `test/stubs/persistence_stub.go`, `test/stubs/converter_stub.go`
 - `test/stubs/memory_queue.go`, `test/stubs/stubs_test.go`
 
 **Estimated scope:** Medium (4-5 files)
@@ -87,7 +87,7 @@
 
 **Acceptance criteria:**
 - [ ] `internal/orchestrator/ports.go` con las interfaces que consume el núcleo
-- [ ] `internal/clients` implementa validator/persistance/converter con `net/http` + base64 decode/encode
+- [ ] `internal/clients` implementa validator/persistence/converter con `net/http` + base64 decode/encode
 - [ ] `Converter.Convert(ctx, content)` → `{content_base64, mime_type}` (sin `target_format`)
 - [ ] Cada cliente envuelto en un `gobreaker.CircuitBreaker`; estado abierto → error `ErrDownstream`
 - [ ] Errores de red/timeout/5xx mapeados a `ErrDownstream`; 4xx de negocio (404/409) preservados como errores de dominio
@@ -100,7 +100,7 @@
 
 **Files likely touched:**
 - `internal/orchestrator/ports.go`
-- `internal/clients/validator.go`, `internal/clients/persistance.go`, `internal/clients/converter.go`
+- `internal/clients/validator.go`, `internal/clients/persistence.go`, `internal/clients/converter.go`
 - `internal/clients/clients_test.go`
 
 **Estimated scope:** Medium (4-5 files)

@@ -104,7 +104,7 @@ func TestConverterConvertDownstream(t *testing.T) {
 }
 
 func TestPersistenceCRUD(t *testing.T) {
-	s := stubs.NewPersistanceStub()
+	s := stubs.NewPersistenceStub()
 	defer s.Close()
 	c := clients.NewPersistence(s.URL)
 	ctx := context.Background()
@@ -183,7 +183,7 @@ func TestPersistenceCRUD(t *testing.T) {
 }
 
 func TestPersistenceNotFound(t *testing.T) {
-	s := stubs.NewPersistanceStub()
+	s := stubs.NewPersistenceStub()
 	defer s.Close()
 	c := clients.NewPersistence(s.URL)
 
@@ -196,7 +196,7 @@ func TestPersistenceNotFound(t *testing.T) {
 }
 
 func TestPersistenceDownstream(t *testing.T) {
-	s := stubs.NewPersistanceStub()
+	s := stubs.NewPersistenceStub()
 	s.FailStatus = http.StatusInternalServerError
 	defer s.Close()
 	c := clients.NewPersistence(s.URL)

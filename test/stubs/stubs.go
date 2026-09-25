@@ -1,5 +1,5 @@
 // Package stubs provides fake, in-process implementations of the downstream
-// services (pdf-validator, pdf-persistance, pdf-converter) and of the Redis
+// services (pdf-validator, pdf-persistence, pdf-converter) and of the Redis
 // Streams queue, so the business logic of pdf-main can be built and tested
 // before the real services exist.
 //
