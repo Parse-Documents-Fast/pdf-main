@@ -18,3 +18,17 @@ var (
 	// network error or open circuit breaker).
 	ErrDownstream = errors.New("downstream service unavailable")
 )
+
+// DuplicateError wraps ErrDuplicate and carries the ID of the existing
+// document, surfaced to clients as the existing_id extension (ADR-0001).
+type DuplicateError struct {
+	ID string
+}
+
+func (e DuplicateError) Error() string {
+	return ErrDuplicate.Error() + ": " + e.ID
+}
+
+func (e DuplicateError) Unwrap() error {
+	return ErrDuplicate
+}
