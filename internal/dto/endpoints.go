@@ -15,11 +15,11 @@ const (
 	// (POST, body ConvertRequest).
 	PathConverterConvert = "/convert"
 
-	// PathPersistDocuments is pdf-persistance's collection endpoint
+	// PathPersistDocuments is pdf-persistence's collection endpoint
 	// (POST create, GET list).
 	PathPersistDocuments = "/documents"
 
-	// PathPersistFindByChecksum is pdf-persistance's duplicate lookup
+	// PathPersistFindByChecksum is pdf-persistence's duplicate lookup
 	// endpoint (GET ?checksum=...).
 	PathPersistFindByChecksum = "/documents/by-checksum"
 )

@@ -2,7 +2,7 @@
 
 ## Overview
 
-Construir `pdf-main`, el orquestador de la lógica de negocio del sistema *Parse Documents Fast*, en Go. Expone la API HTTP pública detrás de Traefik y coordina a `pdf-validator`, `pdf-extractor`, `pdf-converter` y `pdf-persistance`. El **formato canónico es Markdown** (ADR-0005): la subida de PDF es asíncrona (`pending` → extracción a Markdown) y la de Markdown es síncrona (persiste directo). La descarga devuelve Markdown tal cual o PDF vía converter. Todo en RAM, errores en RFC 9457, DTOs JSON `snake_case` con binario en base64.
+Construir `pdf-main`, el orquestador de la lógica de negocio del sistema *Parse Documents Fast*, en Go. Expone la API HTTP pública detrás de Traefik y coordina a `pdf-validator`, `pdf-extractor`, `pdf-converter` y `pdf-persistence`. El **formato canónico es Markdown** (ADR-0005): la subida de PDF es asíncrona (`pending` → extracción a Markdown) y la de Markdown es síncrona (persiste directo). La descarga devuelve Markdown tal cual o PDF vía converter. Todo en RAM, errores en RFC 9457, DTOs JSON `snake_case` con binario en base64.
 
 **Seguimiento:** las tareas de abajo son la fuente de las issues. El usuario las mapea 1:1 a GitHub Issues, agrupadas en **4 milestones, uno por fase** (milestones pequeñas).
 
@@ -10,8 +10,8 @@ Construir `pdf-main`, el orquestador de la lógica de negocio del sistema *Parse
 
 1. **Router `chi/v5`** — aprobado en spec. Middlewares (CORS, logging) y path params ergonómicos.
 2. **Ports/interfaces en el consumidor (`orchestrator`)** — el núcleo define las interfaces (`Validator`, `Persistence`, `Converter`, `Queue`); `clients/*` y `queue/*` las implementan. Refinamiento menor del snippet ilustrativo del spec: mantener interfaces en `orchestrator/ports.go` evita acoplar el núcleo a los adaptadores.
-3. **Stubs de servicios en `test/`** — como este es el primer repo, los servicios downstream aún no existen. `test/stubs` levanta servidores `httptest` falsos de validator/persistance/converter (este último **solo descarga**, Markdown→PDF) y un `Queue` fake en memoria para el flujo de extracción. Los stubs nunca entran al binario.
-4. **Circuit breaker con `gobreaker`** — un breaker por cliente HTTP interno (`validator`, `converter`, `persistance`). En abierto → `503` inmediato. Testeable forzando el estado abierto.
+3. **Stubs de servicios en `test/`** — como este es el primer repo, los servicios downstream aún no existen. `test/stubs` levanta servidores `httptest` falsos de validator/persistence/converter (este último **solo descarga**, Markdown→PDF) y un `Queue` fake en memoria para el flujo de extracción. Los stubs nunca entran al binario.
+4. **Circuit breaker con `gobreaker`** — un breaker por cliente HTTP interno (`validator`, `converter`, `persistence`). En abierto → `503` inmediato. Testeable forzando el estado abierto.
 5. **Un solo consumer de resultados** (`queue:extraction-results`) — ADR-0005 elimina `queue:conversion*`. La lógica "recibir resultado → actualizar persistencia" es una función pura testeable; el loop de Redis Streams queda como capa delgada sin cobertura.
 6. **Deploy en `docker-compose.yml`** — labels de Traefik (`rate-limit-redis@file,cb-documents@file`) y `networks: [fast_pdf_network]`; la imagen compila solo `cmd/pdf-main`.
 

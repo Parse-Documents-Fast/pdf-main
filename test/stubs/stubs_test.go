@@ -134,8 +134,8 @@ func TestConverterStub(t *testing.T) {
 	}
 }
 
-func TestPersistanceStubCRUD(t *testing.T) {
-	s := stubs.NewPersistanceStub()
+func TestPersistenceStubCRUD(t *testing.T) {
+	s := stubs.NewPersistenceStub()
 	defer s.Close()
 
 	// Create (PDF, pending).

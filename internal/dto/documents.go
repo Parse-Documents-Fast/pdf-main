@@ -42,7 +42,7 @@ type PdfDocument struct {
 	Error   *string `json:"error"`
 }
 
-// PersistCreateRequest is the body of POST to pdf-persistance. Content is only
+// PersistCreateRequest is the body of POST to pdf-persistence. Content is only
 // set for Markdown uploads (persisted synchronously as done).
 type PersistCreateRequest struct {
 	Title          string  `json:"title"`
@@ -52,7 +52,7 @@ type PersistCreateRequest struct {
 	Content        *string `json:"content,omitempty"`
 }
 
-// PersistRecord is the record returned by pdf-persistance (create/get/find).
+// PersistRecord is the record returned by pdf-persistence (create/get/find).
 // Content and Error are always present in the wire (null while unset).
 type PersistRecord struct {
 	ID             string    `json:"id"`
@@ -65,7 +65,7 @@ type PersistRecord struct {
 	CreatedAt      time.Time `json:"created_at"`
 }
 
-// PersistUpdateRequest is the body of PATCH to pdf-persistance, used when a
+// PersistUpdateRequest is the body of PATCH to pdf-persistence, used when a
 // queue result arrives (done → content+status, failed → status+error).
 type PersistUpdateRequest struct {
 	Content *string `json:"content,omitempty"`
