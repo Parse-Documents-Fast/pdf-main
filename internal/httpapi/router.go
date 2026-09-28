@@ -1,9 +1,7 @@
-// Package httpapi contains the HTTP adapters (handlers, router and
-// middlewares) that translate requests into orchestrator calls and map domain
-// errors to RFC 9457 responses (ADR-0001).
 package httpapi
 
 import (
+	"encoding/json"
 	"net/http"
 
 	"github.com/Parse-Documents-Fast/pdf-main/internal/orchestrator"
@@ -11,12 +9,21 @@ import (
 )
 
 // Router builds the chi router exposing the public API with its middlewares.
+//
+// The public contract (methods, paths and status codes) is defined in
+// docs/spec.md §Endpoints. These routes are the coordination point with the
+// CLI/web client and with pdf-infra (Traefik routes by Host + prefix).
 func Router(p orchestrator.Ports) http.Handler {
 	a := &api{ports: p}
 
 	r := chi.NewRouter()
 	r.Use(allowCORS)
+
 	r.Post("/api/pdfs", a.handleUpload)
+	r.Get("/api/pdfs", a.handleList)
+	r.Get("/api/pdfs/{id}", a.handleGet)
+	r.Delete("/api/pdfs/{id}", a.handleDelete)
+
 	return r
 }
 
@@ -33,4 +40,11 @@ func allowCORS(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// writeJSON writes v as a JSON response with the given status code.
+func writeJSON(w http.ResponseWriter, status int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(v)
 }
