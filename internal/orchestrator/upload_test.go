@@ -16,6 +16,7 @@ type env struct {
 	ports        orchestrator.Ports
 	validator    *stubs.ValidatorStub
 	persistence  *stubs.PersistenceStub
+	converter    *stubs.ConverterStub
 	queue        *stubs.MemoryQueue
 	persistCache *clients.Persistence
 }
@@ -27,22 +28,26 @@ func newEnv(t *testing.T) *env {
 
 	vs := stubs.NewValidatorStub()
 	ps := stubs.NewPersistenceStub()
+	cs := stubs.NewConverterStub()
 	q := stubs.NewMemoryQueue()
 	pc := clients.NewPersistence(ps.URL)
 
 	t.Cleanup(func() {
 		vs.Close()
 		ps.Close()
+		cs.Close()
 	})
 
 	return &env{
 		ports: orchestrator.Ports{
 			Validator:   clients.NewValidator(vs.URL),
 			Persistence: pc,
+			Converter:   clients.NewConverter(cs.URL),
 			Queue:       q,
 		},
 		validator:    vs,
 		persistence:  ps,
+		converter:    cs,
 		queue:        q,
 		persistCache: pc,
 	}

@@ -17,6 +17,12 @@ var (
 	// ErrDownstream marks a downstream service that failed (5xx, timeout,
 	// network error or open circuit breaker).
 	ErrDownstream = errors.New("downstream service unavailable")
+
+	// ErrNotReady marks a document that is still being processed (pending).
+	ErrNotReady = errors.New("document not ready")
+
+	// ErrFailed marks a document whose processing failed.
+	ErrFailed = errors.New("document processing failed")
 )
 
 // DuplicateError wraps ErrDuplicate and carries the ID of the existing
