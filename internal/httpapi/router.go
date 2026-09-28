@@ -22,6 +22,7 @@ func Router(p orchestrator.Ports) http.Handler {
 	r.Post("/api/pdfs", a.handleUpload)
 	r.Get("/api/pdfs", a.handleList)
 	r.Get("/api/pdfs/{id}", a.handleGet)
+	r.Get("/api/pdfs/{id}/download", a.handleDownload)
 	r.Delete("/api/pdfs/{id}", a.handleDelete)
 
 	return r

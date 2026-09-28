@@ -17,10 +17,12 @@ import (
 )
 
 type env struct {
-	handler     http.Handler
-	validator   *stubs.ValidatorStub
-	persistence *stubs.PersistenceStub
-	queue       *stubs.MemoryQueue
+	handler      http.Handler
+	validator    *stubs.ValidatorStub
+	persistence  *stubs.PersistenceStub
+	converter    *stubs.ConverterStub
+	queue        *stubs.MemoryQueue
+	persistCache *clients.Persistence
 }
 
 func newEnv(t *testing.T) *env {
@@ -28,23 +30,29 @@ func newEnv(t *testing.T) *env {
 
 	vs := stubs.NewValidatorStub()
 	ps := stubs.NewPersistenceStub()
+	cs := stubs.NewConverterStub()
 	q := stubs.NewMemoryQueue()
+	pc := clients.NewPersistence(ps.URL)
 	t.Cleanup(func() {
 		vs.Close()
 		ps.Close()
+		cs.Close()
 	})
 
 	ports := orchestrator.Ports{
 		Validator:   clients.NewValidator(vs.URL),
-		Persistence: clients.NewPersistence(ps.URL),
+		Persistence: pc,
+		Converter:   clients.NewConverter(cs.URL),
 		Queue:       q,
 	}
 
 	return &env{
-		handler:     httpapi.Router(ports),
-		validator:   vs,
-		persistence: ps,
-		queue:       q,
+		handler:      httpapi.Router(ports),
+		validator:    vs,
+		persistence:  ps,
+		converter:    cs,
+		queue:        q,
+		persistCache: pc,
 	}
 }
 

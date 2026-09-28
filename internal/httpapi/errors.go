@@ -16,6 +16,8 @@ const (
 	titleInvalid     = "Invalid file"
 	titleDuplicate   = "Duplicate document"
 	titleNotFound    = "Document not found"
+	titleNotReady    = "Document not ready"
+	titleFailed      = "Processing failed"
 	titleUnavailable = "Service unavailable"
 	titleInternal    = "Internal error"
 )
@@ -37,6 +39,10 @@ func writeError(w http.ResponseWriter, r *http.Request, err error) {
 		problem.WriteProblem(w, http.StatusConflict, titleDuplicate, "This document was already uploaded", instance)
 	case errors.Is(err, orchestrator.ErrNotFound):
 		problem.WriteProblem(w, http.StatusNotFound, titleNotFound, "The document does not exist", instance)
+	case errors.Is(err, orchestrator.ErrNotReady):
+		problem.WriteProblem(w, http.StatusConflict, titleNotReady, "The document is still being processed", instance)
+	case errors.Is(err, orchestrator.ErrFailed):
+		problem.WriteProblem(w, http.StatusUnprocessableEntity, titleFailed, "The document could not be processed", instance)
 	case errors.Is(err, orchestrator.ErrDownstream):
 		problem.WriteProblem(w, http.StatusServiceUnavailable, titleUnavailable, "An internal service is unavailable", instance)
 	default:
