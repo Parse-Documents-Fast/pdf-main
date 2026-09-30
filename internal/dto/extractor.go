@@ -19,3 +19,16 @@ type ExtractionResult struct {
 	Content *string                 `json:"content,omitempty"`
 	Error   *problem.ProblemDetails `json:"error,omitempty"`
 }
+
+// ExtractRequest is the body sent to pdf-extractor's synchronous /extract
+// endpoint (benchmark-only, ADR-0004 deviation: sync instead of queue).
+type ExtractRequest struct {
+	ContentBase64 []byte `json:"content_base64"`
+}
+
+// ExtractResponse is the synchronous extraction result. It doubles as the
+// public POST /extract response of pdf-main.
+type ExtractResponse struct {
+	Content   string `json:"content"`
+	PageCount int    `json:"page_count"`
+}

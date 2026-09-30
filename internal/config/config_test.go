@@ -10,6 +10,7 @@ var defaultConfig = Config{
 	ValidatorURL:   "http://pdf-validator:8000",
 	PersistenceURL: "http://pdf-persistence:8000",
 	ConverterURL:   "http://pdf-converter:8000",
+	ExtractorURL:   "http://pdf-extractor:8000",
 	RedisQueueAddr: "redis-queue:6379",
 	MaxFileSizeMB:  10,
 }
@@ -29,6 +30,7 @@ func TestLoadFromEnv(t *testing.T) {
 	t.Setenv("VALIDATOR_URL", "http://validator.test:9000")
 	t.Setenv("PERSISTENCE_URL", "http://persist.test:9000")
 	t.Setenv("CONVERTER_URL", "http://convert.test:9000")
+	t.Setenv("EXTRACTOR_URL", "http://extract.test:9000")
 	t.Setenv("REDIS_QUEUE_ADDR", "redis.test:6380")
 	t.Setenv("MAX_FILE_SIZE_MB", "25")
 
@@ -37,6 +39,7 @@ func TestLoadFromEnv(t *testing.T) {
 		ValidatorURL:   "http://validator.test:9000",
 		PersistenceURL: "http://persist.test:9000",
 		ConverterURL:   "http://convert.test:9000",
+		ExtractorURL:   "http://extract.test:9000",
 		RedisQueueAddr: "redis.test:6380",
 		MaxFileSizeMB:  25,
 	}
@@ -73,7 +76,7 @@ func clearEnv(t *testing.T) {
 	t.Helper()
 	for _, k := range []string{
 		"HTTP_ADDR", "VALIDATOR_URL", "PERSISTENCE_URL", "CONVERTER_URL",
-		"REDIS_QUEUE_ADDR", "MAX_FILE_SIZE_MB",
+		"EXTRACTOR_URL", "REDIS_QUEUE_ADDR", "MAX_FILE_SIZE_MB",
 	} {
 		t.Setenv(k, "")
 	}

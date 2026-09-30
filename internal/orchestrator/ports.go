@@ -38,10 +38,20 @@ type Producer interface {
 	PublishExtraction(ctx context.Context, job dto.ExtractionJob) error
 }
 
-// Ports groups the dependencies the orchestrator core needs.
+// Extractor synchronously extracts a PDF into Markdown plus a page count. It
+// is used only by the benchmark endpoint POST /extract (ADR-0004 deviation:
+// synchronous instead of via queue). Implemented by clients.Extractor.
+type Extractor interface {
+	Extract(ctx context.Context, content []byte) (dto.ExtractResponse, error)
+}
+
+// Ports groups the dependencies the orchestrator core needs. Extractor is an
+// extra (benchmark-only) dependency used by the /extract HTTP handler rather
+// than by the core orchestration functions.
 type Ports struct {
 	Validator   Validator
 	Persistence Persistence
 	Converter   Converter
 	Queue       Producer
+	Extractor   Extractor
 }

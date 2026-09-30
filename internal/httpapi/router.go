@@ -25,6 +25,9 @@ func Router(p orchestrator.Ports) http.Handler {
 	r.Get("/api/pdfs/{id}/download", a.handleDownload)
 	r.Delete("/api/pdfs/{id}", a.handleDelete)
 
+	// Benchmark-only synchronous extraction (ADR-0004 deviation).
+	r.Post("/extract", a.handleExtract)
+
 	return r
 }
 

@@ -1,7 +1,7 @@
 // Package stubs provides fake, in-process implementations of the downstream
-// services (pdf-validator, pdf-persistence, pdf-converter) and of the Redis
-// Streams queue, so the business logic of pdf-main can be built and tested
-// before the real services exist.
+// services (pdf-validator, pdf-persistence, pdf-converter, pdf-extractor) and
+// of the Redis Streams queue, so the business logic of pdf-main can be built
+// and tested before the real services exist.
 //
 // Each stub is an httptest server (or an in-memory queue) that speaks the same
 // JSON wire contract as the real service (docs/spec.md §DTOs). Stubs allow
