@@ -15,6 +15,10 @@ const (
 	// (POST, body ConvertRequest).
 	PathConverterConvert = "/convert"
 
+	// PathExtractorExtract is pdf-extractor's synchronous extraction endpoint
+	// (POST, body ExtractRequest) — benchmark-only, ADR-0004 deviation.
+	PathExtractorExtract = "/extract"
+
 	// PathPersistDocuments is pdf-persistence's collection endpoint
 	// (POST create, GET list).
 	PathPersistDocuments = "/documents"
