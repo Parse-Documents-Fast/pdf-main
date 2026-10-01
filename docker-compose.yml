@@ -1,0 +1,21 @@
+services:
+  pdf-main:
+    build: .
+    image: pdf-main:1.0-foxbat
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    networks:
+      - fast_pdf_network
+    # No ports exposed to the host: only reachable through Traefik.
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.pdf-main.rule=Host(`api.pdfmanager.local`)"
+      - "traefik.http.routers.pdf-main.entrypoints=websecure"
+      - "traefik.http.routers.pdf-main.tls=true"
+      - "traefik.http.routers.pdf-main.middlewares=rate-limit-redis@file,cb-documents@file"
+
+networks:
+  fast_pdf_network:
+    external: true

@@ -1,0 +1,24 @@
+# Benchmark/TP override: hardware limits + horizontal scaling + TP routing
+# Se ejecuta junto con el archivo base:
+#   docker compose -f docker-compose.yml -f docker-compose.tp.yml up -d --build
+
+services:
+  pdf-main:
+    environment:
+      # Ajusta el runtime de Go al límite exacto de 1 CPU para evitar context switching masivo
+      - GOMAXPROCS=1
+    deploy:
+      # Estricto máximo de 5 réplicas según la consigna del TP
+      replicas: 5
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1G
+    labels:
+      - "traefik.enable=true"
+      # 1. Habilita el entrypoint HTTP ('web' / puerto 80) para peticiones directas de k6/Vegeta
+      - "traefik.http.routers.pdf-main-tp.entrypoints=web"
+      # 2. Captura cualquier petición a /extract sin exigir la cabecera Host: api.pdfmanager.local
+      - "traefik.http.routers.pdf-main-tp.rule=Path(`/extract`)"
+      # 3. Remueve Circuit Breaker y Rate Limit para permitir evaluar el throughput máximo del microservicio
+      - "traefik.http.routers.pdf-main-tp.middlewares="

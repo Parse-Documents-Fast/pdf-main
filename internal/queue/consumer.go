@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/Parse-Documents-Fast/pdf-main/internal/dto"
 	"github.com/Parse-Documents-Fast/pdf-main/internal/orchestrator"
@@ -65,15 +66,23 @@ func NewConsumer(addr string, persistence orchestrator.Persistence) *Consumer {
 }
 
 // Run consumes results until ctx is cancelled. It returns nil on a clean
-// shutdown (context cancellation).
+// shutdown (context cancellation). Transient errors (e.g. Redis being down)
+// are logged and retried with a backoff, so the process keeps waiting instead
+// of exiting.
 func (c *Consumer) Run(ctx context.Context) error {
-	if err := c.ensureGroup(ctx); err != nil {
-		return err
-	}
+	const retryDelay = time.Second
 
 	for {
 		if err := ctx.Err(); err != nil {
 			return nil
+		}
+
+		if err := c.ensureGroup(ctx); err != nil {
+			slog.Error("creating consumer group", "err", err)
+			if !sleepOrDone(ctx, retryDelay) {
+				return nil
+			}
+			continue
 		}
 
 		streams, err := c.rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
@@ -88,7 +97,10 @@ func (c *Consumer) Run(ctx context.Context) error {
 				continue
 			}
 			slog.Error("reading results stream", "err", err)
-			return err
+			if !sleepOrDone(ctx, retryDelay) {
+				return nil
+			}
+			continue
 		}
 
 		for _, s := range streams {
@@ -99,10 +111,22 @@ func (c *Consumer) Run(ctx context.Context) error {
 					continue
 				}
 				if err := c.rdb.XAck(ctx, streamExtractionResults, consumerGroup, msg.ID).Err(); err != nil {
-					return err
+					slog.Error("acking result", "id", msg.ID, "err", err)
 				}
 			}
 		}
+	}
+}
+
+// sleepOrDone waits d, returning false early if ctx is cancelled.
+func sleepOrDone(ctx context.Context, d time.Duration) bool {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-t.C:
+		return true
 	}
 }
 
