@@ -17,7 +17,7 @@ services:
     labels:
       - "traefik.enable=true"
       # 1. Habilita el entrypoint HTTP ('web' / puerto 80) para peticiones directas de k6/Vegeta
-      - "traefik.http.routers.pdf-main-tp.entrypoints=web"
+      - "traefik.http.routers.pdf-main-tp.entrypoints=http"
       # 2. Captura cualquier petición a /extract sin exigir la cabecera Host: api.pdfmanager.local
       - "traefik.http.routers.pdf-main-tp.rule=Path(`/extract`)"
       # 3. Remueve Circuit Breaker y Rate Limit para permitir evaluar el throughput máximo del microservicio
