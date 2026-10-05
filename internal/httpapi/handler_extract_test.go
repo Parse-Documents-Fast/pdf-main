@@ -100,4 +100,11 @@ func TestExtractDownstream(t *testing.T) {
 	if rr.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d, want 503", rr.Code)
 	}
+	p := decodeProblem(t, rr)
+	if p.Title != "Service unavailable" {
+		t.Errorf("Title = %q, want Service unavailable", p.Title)
+	}
+	if p.Detail != "The extractor service is unavailable" {
+		t.Errorf("Detail = %q, want the extractor service named", p.Detail)
+	}
 }

@@ -22,7 +22,7 @@ func NewExtractor(baseURL string) *Extractor {
 }
 
 // Extract sends a PDF and returns the extracted Markdown and page count. Any
-// non-200 response maps to orchestrator.ErrDownstream.
+// non-200 response maps to a typed ErrDownstream (orchestrator.DownstreamError).
 func (c *Extractor) Extract(ctx context.Context, content []byte) (dto.ExtractResponse, error) {
 	body, err := json.Marshal(dto.ExtractRequest{ContentBase64: content})
 	if err != nil {
@@ -35,12 +35,12 @@ func (c *Extractor) Extract(ctx context.Context, content []byte) (dto.ExtractRes
 	}
 
 	if status != http.StatusOK {
-		return dto.ExtractResponse{}, orchestrator.ErrDownstream
+		return dto.ExtractResponse{}, c.hc.downstreamError(status, nil)
 	}
 
 	var resp dto.ExtractResponse
 	if err := json.Unmarshal(data, &resp); err != nil {
-		return dto.ExtractResponse{}, orchestrator.ErrDownstream
+		return dto.ExtractResponse{}, c.hc.downstreamError(status, err)
 	}
 	return resp, nil
 }

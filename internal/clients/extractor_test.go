@@ -39,3 +39,20 @@ func TestExtractorExtractDownstream(t *testing.T) {
 		t.Fatalf("err = %v, want ErrDownstream", err)
 	}
 }
+
+func TestExtractorExtractDownstreamCarriesService(t *testing.T) {
+	s := stubs.NewExtractorStub()
+	s.FailStatus = http.StatusInternalServerError
+	defer s.Close()
+
+	c := clients.NewExtractor(s.URL)
+	_, err := c.Extract(context.Background(), []byte("%PDF-1.4"))
+
+	var de orchestrator.DownstreamError
+	if !errors.As(err, &de) {
+		t.Fatalf("err = %v, want DownstreamError", err)
+	}
+	if de.Service != "extractor" {
+		t.Errorf("Service = %q, want extractor", de.Service)
+	}
+}

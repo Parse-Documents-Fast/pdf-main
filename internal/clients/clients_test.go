@@ -53,6 +53,26 @@ func TestValidatorValidateDownstream(t *testing.T) {
 	}
 }
 
+func TestValidatorValidateDownstreamCarriesService(t *testing.T) {
+	s := stubs.NewValidatorStub()
+	s.FailStatus = http.StatusInternalServerError
+	defer s.Close()
+
+	c := clients.NewValidator(s.URL)
+	_, err := c.Validate(context.Background(), []byte("%PDF-1.4"), "x.pdf")
+
+	var de orchestrator.DownstreamError
+	if !errors.As(err, &de) {
+		t.Fatalf("err = %v, want DownstreamError", err)
+	}
+	if de.Service != "validator" {
+		t.Errorf("Service = %q, want validator", de.Service)
+	}
+	if de.Status != http.StatusInternalServerError {
+		t.Errorf("Status = %d, want %d", de.Status, http.StatusInternalServerError)
+	}
+}
+
 func TestValidatorCircuitBreakerOpens(t *testing.T) {
 	s := stubs.NewValidatorStub()
 	defer s.Close()
