@@ -295,10 +295,17 @@ Convenciones:
 | `GET` | `/api/pdfs/{id}` | `200` `PdfDocument` | `404` no existe |
 | `DELETE` | `/api/pdfs/{id}` | `204` | `404` no existe |
 | `GET` | `/api/pdfs/{id}/download?format=pdf\|markdown` | `200` archivo (`Content-Disposition: attachment; filename="{title}.{ext}"`) | `404`, `409` aún `pending`, `422` si `failed`, `400` formato inválido |
+| `POST` | `/extract` | `200` `ExtractResponse` (`content`, `page_count`) | `400` inválido/no-PDF, `503` downstream |
 
 - Subida: `multipart/form-data` con `file` (binario) + `title` (opcional, default = nombre del archivo sin extensión).
 - `format` en la descarga es opcional; default `markdown` (el formato canónico, sin conversión).
 - CORS: `allow all` (la futura web lo necesita); se puede ajustar después.
+
+### `POST /extract` (benchmark-only, desviación síncrona de ADR-0004)
+
+`/extract` es un endpoint **aditivo y opcional**, agregado para el benchmark de carga y estrés (ver `docker-compose.tp.yml`). A diferencia del flujo async de `/api/pdfs`, extrae el PDF **de forma síncrona**: valida con `pdf-validator` y llama directo a `pdf-extractor` por HTTP, manteniendo la conexión abierta hasta tener el Markdown y el conteo de páginas. No toca `pdf-persistence`, `pdf-converter` ni la cola.
+
+Es la **única** excepción a la regla "no hablar con `pdf-extractor` directamente (solo vía cola)": existe solo para que el benchmark pueda medir el throughput del microservicio de extracción sin el overhead de la cola ni de la persistencia.
 
 ---
 
@@ -364,6 +371,7 @@ El breaker envuelve solo las llamadas internas de `clients/*`; el borde público
 | `VALIDATOR_URL` | `http://pdf-validator:8000` | Base URL de `pdf-validator` |
 | `PERSISTENCE_URL` | `http://pdf-persistence:8000` | Base URL de `pdf-persistence` |
 | `CONVERTER_URL` | `http://pdf-converter:8000` | Base URL de `pdf-converter` |
+| `EXTRACTOR_URL` | `http://pdf-extractor:8080` | Base URL de `pdf-extractor` (solo `POST /extract`, benchmark) |
 | `REDIS_QUEUE_ADDR` | `redis-queue:6379` | Redis de colas (ADR-0004) |
 | `MAX_FILE_SIZE_MB` | `10` | Tope de tamaño heredado del monolito |
 
@@ -405,7 +413,7 @@ El middleware `cb-documents` es el circuit breaker de Traefik (ya configurado en
   - Commitear secretos / `.env`.
   - Escribir archivos temporales en disco.
   - Hablar con MongoDB directamente (siempre vía `pdf-persistence`).
-  - Hablar con `pdf-extractor` directamente (solo vía cola).
+  - Hablar con `pdf-extractor` directamente (solo vía cola). *Excepción:* `POST /extract` (benchmark-only), única llamada HTTP síncrona al extractor.
   - Exponer puerto al host (solo accesible vía Traefik).
 
 ---
