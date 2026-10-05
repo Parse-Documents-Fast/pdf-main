@@ -33,7 +33,12 @@ func newHTTPClient(name, baseURL string) *httpClient {
 	return &httpClient{
 		name:    name,
 		baseURL: baseURL,
-		client:  &http.Client{Timeout: requestTimeout},
+		client: &http.Client{
+			Timeout: requestTimeout,
+			Transport: &http.Transport{
+				MaxIdleConnsPerHost: 100, // o al menos vus_max de tu benchmark
+			},
+		},
 		breaker: gobreaker.NewCircuitBreaker(gobreaker.Settings{
 			Name:    name,
 			Timeout: 30 * time.Second,
