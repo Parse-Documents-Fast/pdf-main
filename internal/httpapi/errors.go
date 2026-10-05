@@ -2,6 +2,8 @@ package httpapi
 
 import (
 	"errors"
+	"fmt"
+	"log/slog"
 	"net/http"
 
 	"github.com/Parse-Documents-Fast/pdf-main/internal/orchestrator"
@@ -44,6 +46,21 @@ func writeError(w http.ResponseWriter, r *http.Request, err error) {
 	case errors.Is(err, orchestrator.ErrFailed):
 		problem.WriteProblem(w, http.StatusUnprocessableEntity, titleFailed, "The document could not be processed", instance)
 	case errors.Is(err, orchestrator.ErrDownstream):
+		var de orchestrator.DownstreamError
+		if errors.As(err, &de) {
+			slog.Error("downstream service unavailable",
+				"service", de.Service,
+				"status", de.Status,
+				"instance", instance,
+				"cause", de.Err,
+			)
+			service := de.Service
+			if service == "" {
+				service = "downstream"
+			}
+			problem.WriteProblem(w, http.StatusServiceUnavailable, titleUnavailable, fmt.Sprintf("The %s service is unavailable", service), instance)
+			return
+		}
 		problem.WriteProblem(w, http.StatusServiceUnavailable, titleUnavailable, "An internal service is unavailable", instance)
 	default:
 		problem.WriteProblem(w, http.StatusInternalServerError, titleInternal, "An unexpected error occurred", instance)

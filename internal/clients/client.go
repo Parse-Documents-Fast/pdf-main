@@ -48,11 +48,14 @@ type httpResult struct {
 }
 
 // do performs a request and returns the response status and body. It returns
-// orchestrator.ErrDownstream for transport errors, timeouts, 5xx responses and
-// when the breaker is open. 4xx responses are returned as results (not
-// errors) so they never count against the breaker.
+// a *orchestrator.DownstreamError for transport errors, timeouts, 5xx responses
+// and when the breaker is open; the error names the service and carries the
+// status when known. 4xx responses are returned as results (not errors) so
+// they never count against the breaker.
 func (c *httpClient) do(ctx context.Context, method, path string, body []byte) (int, []byte, error) {
+	var status int
 	result, err := c.breaker.Execute(func() (any, error) {
+		status = 0
 		var r io.Reader
 		if body != nil {
 			r = bytes.NewReader(body)
@@ -75,14 +78,24 @@ func (c *httpClient) do(ctx context.Context, method, path string, body []byte) (
 		if err != nil {
 			return nil, err
 		}
+		status = resp.StatusCode
 		if resp.StatusCode >= 500 {
-			return nil, fmt.Errorf("%s: downstream returned %d", c.name, resp.StatusCode)
+			return nil, fmt.Errorf("downstream returned %d", resp.StatusCode)
 		}
 		return &httpResult{status: resp.StatusCode, body: data}, nil
 	})
 	if err != nil {
-		return 0, nil, orchestrator.ErrDownstream
+		return 0, nil, c.downstreamError(status, err)
 	}
 	res := result.(*httpResult)
 	return res.status, res.body, nil
+}
+
+// downstreamError builds a typed ErrDownstream carrying the service name,
+// status and underlying cause.
+func (c *httpClient) downstreamError(status int, cause error) error {
+	if cause == nil {
+		cause = orchestrator.ErrDownstream
+	}
+	return orchestrator.DownstreamError{Service: c.name, Status: status, Err: cause}
 }

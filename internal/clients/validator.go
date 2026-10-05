@@ -20,7 +20,8 @@ func NewValidator(baseURL string) *Validator {
 }
 
 // Validate classifies content and returns its format and checksum. A 400 maps
-// to orchestrator.ErrInvalid; transport/5xx map to orchestrator.ErrDownstream.
+// to orchestrator.ErrInvalid; transport/5xx map to a typed ErrDownstream
+// (orchestrator.DownstreamError) naming the service.
 func (c *Validator) Validate(ctx context.Context, content []byte, filename string) (dto.ValidateResponse, error) {
 	req := dto.ValidateRequest{Filename: filename, ContentBase64: content}
 	body, err := json.Marshal(req)
@@ -37,12 +38,12 @@ func (c *Validator) Validate(ctx context.Context, content []byte, filename strin
 	case http.StatusOK:
 		var v dto.ValidateResponse
 		if err := json.Unmarshal(data, &v); err != nil {
-			return dto.ValidateResponse{}, orchestrator.ErrDownstream
+			return dto.ValidateResponse{}, c.hc.downstreamError(status, err)
 		}
 		return v, nil
 	case http.StatusBadRequest:
 		return dto.ValidateResponse{}, orchestrator.ErrInvalid
 	default:
-		return dto.ValidateResponse{}, orchestrator.ErrDownstream
+		return dto.ValidateResponse{}, c.hc.downstreamError(status, nil)
 	}
 }

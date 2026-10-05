@@ -1,7 +1,7 @@
 services:
   pdf-main:
     build: .
-    image: pdf-main:1.0-foxbat
+    image: pdf-main:1.2-foxbat
     restart: unless-stopped
     env_file:
       - path: .env
