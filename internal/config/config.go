@@ -50,7 +50,7 @@ func Load() Config {
 		ValidatorURL:   getEnv("VALIDATOR_URL", "http://pdf-validator:8000"),
 		PersistenceURL: getEnv("PERSISTENCE_URL", "http://pdf-persistence:8000"),
 		ConverterURL:   getEnv("CONVERTER_URL", "http://pdf-converter:8000"),
-		ExtractorURL:   getEnv("EXTRACTOR_URL", "http://pdf-extractor:8080"),
+		ExtractorURL:   getEnv("EXTRACTOR_URL", "http://pdf-extractor:8000"),
 		RedisQueueAddr: getEnv("REDIS_QUEUE_ADDR", "redis-queue:6379"),
 		MaxFileSizeMB:  getEnvInt("MAX_FILE_SIZE_MB", 10),
 	}

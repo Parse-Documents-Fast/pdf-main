@@ -10,7 +10,7 @@ var defaultConfig = Config{
 	ValidatorURL:   "http://pdf-validator:8000",
 	PersistenceURL: "http://pdf-persistence:8000",
 	ConverterURL:   "http://pdf-converter:8000",
-	ExtractorURL:   "http://pdf-extractor:8080",
+	ExtractorURL:   "http://pdf-extractor:8000",
 	RedisQueueAddr: "redis-queue:6379",
 	MaxFileSizeMB:  10,
 }
