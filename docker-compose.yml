@@ -10,7 +10,7 @@ services:
       replicas: ${PDF_MAIN_REPLICAS:-1}
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:8000/health"]
-      interval: 1s
+      interval: 30s
       timeout: 10s
       retries: 3
     networks:
