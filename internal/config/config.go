@@ -7,7 +7,9 @@
 package config
 
 import (
+	"fmt"
 	"log/slog"
+	"math/rand/v2"
 	"os"
 	"strconv"
 )
@@ -37,6 +39,18 @@ type Config struct {
 
 	// MaxFileSizeMB is the upload size limit inherited from the monolith.
 	MaxFileSizeMB int
+
+	// StreamExtraction addres for the queue.
+	StreamExtraction string
+
+	// StreamExtractionResults addres for the queue results.
+	StreamExtractionResults string
+
+	// ConsumerGroup for Redis, always pdf-main in this case.
+	ConsumerGroup string
+
+	// ConsumerName must be diferent in each replica.
+	ConsumerName string
 }
 
 // Load reads the configuration from the environment, applying the defaults
@@ -45,15 +59,38 @@ type Config struct {
 // This keeps the startup path simple (no config error to surface in main.go)
 // while still making misconfiguration visible in the logs.
 func Load() Config {
+
 	return Config{
-		HTTPAddr:       getEnv("HTTP_ADDR", ":8000"),
-		ValidatorURL:   getEnv("VALIDATOR_URL", "http://pdf-validator:8000"),
-		PersistenceURL: getEnv("PERSISTENCE_URL", "http://pdf-persistence:8000"),
-		ConverterURL:   getEnv("CONVERTER_URL", "http://pdf-converter:8000"),
-		ExtractorURL:   getEnv("EXTRACTOR_URL", "http://pdf-extractor:8000"),
-		RedisQueueAddr: getEnv("REDIS_QUEUE_ADDR", "redis-queue:6379"),
-		MaxFileSizeMB:  getEnvInt("MAX_FILE_SIZE_MB", 10),
+		HTTPAddr:                getEnv("HTTP_ADDR", ":8000"),
+		ValidatorURL:            getEnv("VALIDATOR_URL", "http://pdf-validator:8000"),
+		PersistenceURL:          getEnv("PERSISTENCE_URL", "http://pdf-persistence:8000"),
+		ConverterURL:            getEnv("CONVERTER_URL", "http://pdf-converter:8000"),
+		ExtractorURL:            getEnv("EXTRACTOR_URL", "http://pdf-extractor:8000"),
+		RedisQueueAddr:          getEnv("REDIS_QUEUE_ADDR", "redis-queue:6379"),
+		MaxFileSizeMB:           getEnvInt("MAX_FILE_SIZE_MB", 10),
+		StreamExtraction:        getEnv("REDIS_STREAM_EXTRACTION", "queue:extraction"),
+		StreamExtractionResults: getEnv("REDIS_STREAM_EXTRACTION_RESULTS", "queue:extraction-results"),
+		ConsumerGroup:           getEnv("REDIS_CONSUMER_GROUP", "pdf-main"),
+		ConsumerName:            getHost(),
 	}
+}
+
+// getHost returns a unique consumer name for this replica: the CONSUMER_NAME
+// env override, else the container hostname (unique per replica), else a
+// random fallback.
+func getHost() string {
+
+	if name := os.Getenv("CONSUMER_NAME"); name != "" {
+		return name
+	}
+
+	if name, err := os.Hostname(); err == nil && name != "" {
+		return name
+	}
+
+	name := fmt.Sprintf("pdf-main-%08x", rand.Uint32())
+	slog.Warn("could not resolve hostname; using a generated name", "consumer_name", name)
+	return name
 }
 
 // getEnv returns the value of key, or fallback when key is unset or empty.
