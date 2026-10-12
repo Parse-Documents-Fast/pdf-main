@@ -19,6 +19,8 @@ func Router(p orchestrator.Ports) http.Handler {
 	r := chi.NewRouter()
 	r.Use(allowCORS)
 
+	r.Get("/health", a.handleHealth)
+
 	r.Post("/api/pdfs", a.handleUpload)
 	r.Get("/api/pdfs", a.handleList)
 	r.Get("/api/pdfs/{id}", a.handleGet)

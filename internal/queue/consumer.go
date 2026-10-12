@@ -15,11 +15,6 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-const (
-	consumerGroup = "pdf-main"
-	consumerName  = "pdf-main-1"
-)
-
 // HandleResult maps an extraction result to a persistence update. It is a pure
 // function (no Redis, no HTTP), so it can be tested in isolation.
 //
@@ -49,19 +44,27 @@ func HandleResult(ctx context.Context, result dto.ExtractionResult, p orchestrat
 	}
 }
 
-// Consumer reads queue:extraction-results with a consumer group and updates
-// persistence via HandleResult. It is a thin adapter: no business logic lives
-// here, and it is validated manually against pdf-infra (not unit tested).
+// Consumer reads the extraction-results stream with a consumer group and
+// updates persistence via HandleResult. It is a thin adapter: no business
+// logic lives here, and it is validated manually against pdf-infra (not unit
+// tested).
 type Consumer struct {
 	rdb         *redis.Client
 	persistence orchestrator.Persistence
+	stream      string
+	group       string
+	name        string
 }
 
-// NewConsumer builds a consumer connected to the Redis queue at addr.
-func NewConsumer(addr string, persistence orchestrator.Persistence) *Consumer {
+// NewConsumer builds a consumer connected to the Redis queue at addr, reading
+// the given stream as a member of group with the given consumer name.
+func NewConsumer(addr, stream, group, name string, persistence orchestrator.Persistence) *Consumer {
 	return &Consumer{
 		rdb:         redis.NewClient(&redis.Options{Addr: addr}),
 		persistence: persistence,
+		stream:      stream,
+		group:       group,
+		name:        name,
 	}
 }
 
@@ -86,9 +89,9 @@ func (c *Consumer) Run(ctx context.Context) error {
 		}
 
 		streams, err := c.rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
-			Group:    consumerGroup,
-			Consumer: consumerName,
-			Streams:  []string{streamExtractionResults, ">"},
+			Group:    c.group,
+			Consumer: c.name,
+			Streams:  []string{c.stream, ">"},
 			Count:    10,
 			Block:    0, // block until a message arrives or ctx is cancelled
 		}).Result()
@@ -110,7 +113,7 @@ func (c *Consumer) Run(ctx context.Context) error {
 					slog.Error("processing result", "id", msg.ID, "err", err)
 					continue
 				}
-				if err := c.rdb.XAck(ctx, streamExtractionResults, consumerGroup, msg.ID).Err(); err != nil {
+				if err := c.rdb.XAck(ctx, c.stream, c.group, msg.ID).Err(); err != nil {
 					slog.Error("acking result", "id", msg.ID, "err", err)
 				}
 			}
@@ -137,7 +140,7 @@ func (c *Consumer) Close() error {
 
 // ensureGroup creates the consumer group if it does not exist yet.
 func (c *Consumer) ensureGroup(ctx context.Context) error {
-	err := c.rdb.XGroupCreateMkStream(ctx, streamExtractionResults, consumerGroup, "$").Err()
+	err := c.rdb.XGroupCreateMkStream(ctx, c.stream, c.group, "$").Err()
 	if err != nil && !isBusyGroup(err) {
 		return err
 	}

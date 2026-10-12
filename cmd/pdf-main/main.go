@@ -33,8 +33,8 @@ func run() error {
 	cfg := config.Load()
 
 	persistence := clients.NewPersistence(cfg.PersistenceURL)
-	producer := queue.NewProducer(cfg.RedisQueueAddr)
-	consumer := queue.NewConsumer(cfg.RedisQueueAddr, persistence)
+	producer := queue.NewProducer(cfg.RedisQueueAddr, cfg.StreamExtraction)
+	consumer := queue.NewConsumer(cfg.RedisQueueAddr, cfg.StreamExtractionResults, cfg.ConsumerGroup, cfg.ConsumerName, persistence)
 	defer producer.Close()
 	defer consumer.Close()
 
@@ -73,7 +73,7 @@ func run() error {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		slog.Info("consumer started", "stream", "queue:extraction-results")
+		slog.Info("consumer started", "stream", cfg.StreamExtractionResults)
 		if err := consumer.Run(ctx); err != nil {
 			errCh <- err
 		}

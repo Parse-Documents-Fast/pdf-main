@@ -13,23 +13,28 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// Producer publishes extraction jobs to queue:extraction, the only inbound
-// stream (ADR-0005). It implements the orchestrator.Producer port.
+// Producer publishes extraction jobs to the inbound extraction stream
+// (ADR-0005). It implements the orchestrator.Producer port.
 type Producer struct {
-	rdb *redis.Client
+	rdb    *redis.Client
+	stream string
 }
 
-// NewProducer builds a producer connected to the Redis queue at addr.
-func NewProducer(addr string) *Producer {
-	return &Producer{rdb: redis.NewClient(&redis.Options{Addr: addr})}
+// NewProducer builds a producer connected to the Redis queue at addr, writing
+// to the given stream name.
+func NewProducer(addr, stream string) *Producer {
+	return &Producer{
+		rdb:    redis.NewClient(&redis.Options{Addr: addr}),
+		stream: stream,
+	}
 }
 
-// PublishExtraction writes a job to queue:extraction. The raw PDF travels
-// base64-encoded in content_base64 (ADR-0002). This adapter is not unit
-// tested; it is validated manually against pdf-infra.
+// PublishExtraction writes a job to the configured extraction stream. The raw
+// PDF travels base64-encoded in content_base64 (ADR-0002). This adapter is not
+// unit tested; it is validated manually against pdf-infra.
 func (p *Producer) PublishExtraction(ctx context.Context, job dto.ExtractionJob) error {
 	return p.rdb.XAdd(ctx, &redis.XAddArgs{
-		Stream: streamExtraction,
+		Stream: p.stream,
 		Values: map[string]any{
 			"pdf_id":         job.PdfID,
 			"filename":       job.Filename,
