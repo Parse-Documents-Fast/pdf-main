@@ -7,6 +7,7 @@ package queue
 import (
 	"context"
 	"encoding/base64"
+	"log/slog"
 
 	"github.com/Parse-Documents-Fast/pdf-main/internal/dto"
 	"github.com/Parse-Documents-Fast/pdf-main/internal/orchestrator"
@@ -18,14 +19,16 @@ import (
 type Producer struct {
 	rdb    *redis.Client
 	stream string
+	logger *slog.Logger
 }
 
 // NewProducer builds a producer connected to the Redis queue at addr, writing
 // to the given stream name.
-func NewProducer(addr, stream string) *Producer {
+func NewProducer(addr, stream string, logger *slog.Logger) *Producer {
 	return &Producer{
 		rdb:    redis.NewClient(&redis.Options{Addr: addr}),
 		stream: stream,
+		logger: logger,
 	}
 }
 
@@ -33,14 +36,19 @@ func NewProducer(addr, stream string) *Producer {
 // PDF travels base64-encoded in content_base64 (ADR-0002). This adapter is not
 // unit tested; it is validated manually against pdf-infra.
 func (p *Producer) PublishExtraction(ctx context.Context, job dto.ExtractionJob) error {
-	return p.rdb.XAdd(ctx, &redis.XAddArgs{
+	if err := p.rdb.XAdd(ctx, &redis.XAddArgs{
 		Stream: p.stream,
 		Values: map[string]any{
 			"pdf_id":         job.PdfID,
 			"filename":       job.Filename,
 			"content_base64": base64.StdEncoding.EncodeToString(job.ContentBase64),
 		},
-	}).Err()
+	}).Err(); err != nil {
+		return err
+	}
+
+	p.logger.Debug("message published", "stream", p.stream, "pdf_id", job.PdfID)
+	return nil
 }
 
 // Close releases the underlying Redis connection pool.

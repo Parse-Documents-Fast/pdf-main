@@ -3,6 +3,7 @@ package httpapi_test
 import (
 	"bytes"
 	"encoding/json"
+	"log/slog"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -51,7 +52,7 @@ func newEnv(t *testing.T) *env {
 	}
 
 	return &env{
-		handler:      httpapi.Router(ports),
+		handler:      httpapi.Router(slog.New(slog.DiscardHandler), ports),
 		validator:    vs,
 		persistence:  ps,
 		converter:    cs,

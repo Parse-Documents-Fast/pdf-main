@@ -55,13 +55,22 @@ El microservicio se configura mediante variables de entorno (principios Twelve-F
 
 | Variable | Descripción | Default |
 |---|---|---|
-| `HTTP_PORT` | Puerto donde escucha el servidor HTTP | `8080` |
-| `GOMAXPROCS` | Límite de hilos de SO para el runtime de Go | `1` en el TP |
-| `REDIS_QUEUE_URL` | Dirección de la instancia Redis para colas | `redis-queue:6379` |
-| `REDIS_CACHE_URL` | Dirección TCP directa para Redis Cache | `redis-cache:6379` |
-| `VALIDATOR_URL` | Endpoint de conexión hacia `pdf-validator` | — |
-| `PERSISTENCE_URL` | Endpoint de conexión hacia `pdf-persistence` | — |
-| `WORKER_POOL_SIZE` | Cantidad de workers concurrentes en RAM | `4` |
+| `HTTP_ADDR` | Puerto interno de escucha (detrás de Traefik, no expuesto) | `:8000` |
+| `VALIDATOR_URL` | Base URL de `pdf-validator` | `http://pdf-validator:8000` |
+| `PERSISTENCE_URL` | Base URL de `pdf-persistence` | `http://pdf-persistence:8000` |
+| `CONVERTER_URL` | Base URL de `pdf-converter` | `http://pdf-converter:8000` |
+| `EXTRACTOR_URL` | Base URL de `pdf-extractor` (solo `POST /extract`) | `http://pdf-extractor:8000` |
+| `REDIS_QUEUE_ADDR` | Dirección de la instancia Redis para colas | `redis-queue:6379` |
+| `REDIS_STREAM_EXTRACTION` | Stream de entrada de trabajos de extracción | `queue:extraction` |
+| `REDIS_STREAM_EXTRACTION_RESULTS` | Stream de resultados de extracción | `queue:extraction-results` |
+| `REDIS_CONSUMER_GROUP` | Grupo de consumo de Redis Streams | `pdf-main` |
+| `CONSUMER_NAME` | Nombre del consumidor (único por réplica; por defecto usa el hostname) | auto |
+| `MAX_FILE_SIZE_MB` | Tope de tamaño de subida en MB | `10` |
+| `LOG_LEVEL` | Nivel de log: `debug`, `info`, `warn` o `error` | `info` |
+
+`GOMAXPROCS` (límite de hilos del runtime de Go) y `PDF_MAIN_REPLICAS` (cantidad de réplicas) se definen a nivel de `docker-compose`, no en el binario.
+
+Los logs siguen el estándar ADR-0007: una línea JSON por evento a stdout, con los campos `time`, `level`, `service`, `msg` y los campos adicionales definidos en el ADR. Se filtran con `docker compose logs | jq`.
 
 ## Ejecución en Docker
 

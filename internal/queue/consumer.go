@@ -54,17 +54,19 @@ type Consumer struct {
 	stream      string
 	group       string
 	name        string
+	logger      *slog.Logger
 }
 
 // NewConsumer builds a consumer connected to the Redis queue at addr, reading
 // the given stream as a member of group with the given consumer name.
-func NewConsumer(addr, stream, group, name string, persistence orchestrator.Persistence) *Consumer {
+func NewConsumer(addr, stream, group, name string, persistence orchestrator.Persistence, logger *slog.Logger) *Consumer {
 	return &Consumer{
 		rdb:         redis.NewClient(&redis.Options{Addr: addr}),
 		persistence: persistence,
 		stream:      stream,
 		group:       group,
 		name:        name,
+		logger:      logger,
 	}
 }
 
@@ -81,7 +83,7 @@ func (c *Consumer) Run(ctx context.Context) error {
 		}
 
 		if err := c.ensureGroup(ctx); err != nil {
-			slog.Error("creating consumer group", "err", err)
+			c.logger.Error("consumer group creation failed", "stream", c.stream, "error", err)
 			if !sleepOrDone(ctx, retryDelay) {
 				return nil
 			}
@@ -99,7 +101,7 @@ func (c *Consumer) Run(ctx context.Context) error {
 			if errors.Is(err, redis.Nil) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 				continue
 			}
-			slog.Error("reading results stream", "err", err)
+			c.logger.Error("reading stream failed", "stream", c.stream, "error", err)
 			if !sleepOrDone(ctx, retryDelay) {
 				return nil
 			}
@@ -108,14 +110,19 @@ func (c *Consumer) Run(ctx context.Context) error {
 
 		for _, s := range streams {
 			for _, msg := range s.Messages {
+				pdfID := stringField(msg.Values, "pdf_id")
+				c.logger.Info("message received", "stream", c.stream, "consumer_group", c.group, "consumer_name", c.name, "pdf_id", pdfID)
+
 				if err := c.process(ctx, msg); err != nil {
 					// Leave the message unacked so it is redelivered later.
-					slog.Error("processing result", "id", msg.ID, "err", err)
+					c.logger.Error("result processing failed", "pdf_id", pdfID, "error", err)
 					continue
 				}
 				if err := c.rdb.XAck(ctx, c.stream, c.group, msg.ID).Err(); err != nil {
-					slog.Error("acking result", "id", msg.ID, "err", err)
+					c.logger.Error("message ack failed", "pdf_id", pdfID, "error", err)
+					continue
 				}
+				c.logger.Debug("message acknowledged", "stream", c.stream, "pdf_id", pdfID)
 			}
 		}
 	}

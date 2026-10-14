@@ -3,7 +3,6 @@ package httpapi
 import (
 	"errors"
 	"fmt"
-	"log/slog"
 	"net/http"
 
 	"github.com/Parse-Documents-Fast/pdf-main/internal/orchestrator"
@@ -26,8 +25,9 @@ const (
 
 // writeError maps a domain error to its RFC 9457 response. Keep this mapping
 // aligned with docs/spec.md §Endpoints (the coordination point with the
-// client and the other services).
-func writeError(w http.ResponseWriter, r *http.Request, err error) {
+// client and the other services). An error is logged here (where it is
+// handled), not in the layers that returned it upward (ADR-0007 §6).
+func (a *api) writeError(w http.ResponseWriter, r *http.Request, err error) {
 	instance := r.URL.Path
 	switch {
 	case errors.Is(err, orchestrator.ErrInvalid):
@@ -48,11 +48,11 @@ func writeError(w http.ResponseWriter, r *http.Request, err error) {
 	case errors.Is(err, orchestrator.ErrDownstream):
 		var de orchestrator.DownstreamError
 		if errors.As(err, &de) {
-			slog.Error("downstream service unavailable",
-				"service", de.Service,
-				"status", de.Status,
-				"instance", instance,
-				"cause", de.Err,
+			a.logger.Error("downstream call failed",
+				"peer_service", de.Service,
+				"http_status", de.Status,
+				"duration_ms", de.Duration.Milliseconds(),
+				"error", de.Err,
 			)
 			service := de.Service
 			if service == "" {

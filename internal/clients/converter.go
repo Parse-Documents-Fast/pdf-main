@@ -32,12 +32,12 @@ func (c *Converter) Convert(ctx context.Context, content string) (dto.ConvertRes
 	}
 
 	if status != http.StatusOK {
-		return dto.ConvertResponse{}, c.hc.downstreamError(status, nil)
+		return dto.ConvertResponse{}, c.hc.downstreamError(status, nil, 0)
 	}
 
 	var v dto.ConvertResponse
 	if err := json.Unmarshal(data, &v); err != nil {
-		return dto.ConvertResponse{}, c.hc.downstreamError(status, err)
+		return dto.ConvertResponse{}, c.hc.downstreamError(status, err, 0)
 	}
 	return v, nil
 }

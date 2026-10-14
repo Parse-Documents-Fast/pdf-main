@@ -30,7 +30,7 @@ func (a *api) handleDownload(w http.ResponseWriter, r *http.Request) {
 
 	result, err := orchestrator.Download(r.Context(), a.ports, id, format)
 	if err != nil {
-		writeError(w, r, err)
+		a.writeError(w, r, err)
 		return
 	}
 

@@ -59,6 +59,7 @@ type httpResult struct {
 // they never count against the breaker.
 func (c *httpClient) do(ctx context.Context, method, path string, body []byte) (int, []byte, error) {
 	var status int
+	start := time.Now()
 	result, err := c.breaker.Execute(func() (any, error) {
 		status = 0
 		var r io.Reader
@@ -90,17 +91,17 @@ func (c *httpClient) do(ctx context.Context, method, path string, body []byte) (
 		return &httpResult{status: resp.StatusCode, body: data}, nil
 	})
 	if err != nil {
-		return 0, nil, c.downstreamError(status, err)
+		return 0, nil, c.downstreamError(status, err, time.Since(start))
 	}
 	res := result.(*httpResult)
 	return res.status, res.body, nil
 }
 
 // downstreamError builds a typed ErrDownstream carrying the service name,
-// status and underlying cause.
-func (c *httpClient) downstreamError(status int, cause error) error {
+// status, underlying cause and call duration.
+func (c *httpClient) downstreamError(status int, cause error, duration time.Duration) error {
 	if cause == nil {
 		cause = orchestrator.ErrDownstream
 	}
-	return orchestrator.DownstreamError{Service: c.name, Status: status, Err: cause}
+	return orchestrator.DownstreamError{Service: c.name, Status: status, Err: cause, Duration: duration}
 }

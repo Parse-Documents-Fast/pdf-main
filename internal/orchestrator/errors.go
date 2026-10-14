@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"errors"
 	"fmt"
+	"time"
 )
 
 // Domain errors returned by the orchestrator core. The HTTP adapters map them
@@ -55,6 +56,9 @@ type DownstreamError struct {
 	Status int
 	// Err is the underlying cause (transport error, breaker state, ...), if any.
 	Err error
+	// Duration is how long the downstream call took before failing (0 when not
+	// measured, e.g. a non-2xx status mapped by the client after the fact).
+	Duration time.Duration
 }
 
 func (e DownstreamError) Error() string {
