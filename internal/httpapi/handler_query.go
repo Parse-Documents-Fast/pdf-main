@@ -15,7 +15,7 @@ import (
 func (a *api) handleList(w http.ResponseWriter, r *http.Request) {
 	summaries, err := orchestrator.List(r.Context(), a.ports)
 	if err != nil {
-		writeError(w, r, err)
+		a.writeError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, summaries)
@@ -31,7 +31,7 @@ func (a *api) handleGet(w http.ResponseWriter, r *http.Request) {
 
 	doc, err := orchestrator.Get(r.Context(), a.ports, id)
 	if err != nil {
-		writeError(w, r, err)
+		a.writeError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, doc)
@@ -44,7 +44,7 @@ func (a *api) handleDelete(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
 	if err := orchestrator.Delete(r.Context(), a.ports, id); err != nil {
-		writeError(w, r, err)
+		a.writeError(w, r, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

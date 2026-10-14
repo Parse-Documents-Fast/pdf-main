@@ -35,12 +35,12 @@ func (c *Extractor) Extract(ctx context.Context, content []byte) (dto.ExtractRes
 	}
 
 	if status != http.StatusOK {
-		return dto.ExtractResponse{}, c.hc.downstreamError(status, nil)
+		return dto.ExtractResponse{}, c.hc.downstreamError(status, nil, 0)
 	}
 
 	var resp dto.ExtractResponse
 	if err := json.Unmarshal(data, &resp); err != nil {
-		return dto.ExtractResponse{}, c.hc.downstreamError(status, err)
+		return dto.ExtractResponse{}, c.hc.downstreamError(status, err, 0)
 	}
 	return resp, nil
 }

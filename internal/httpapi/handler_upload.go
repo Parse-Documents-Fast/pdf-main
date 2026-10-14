@@ -2,15 +2,18 @@ package httpapi
 
 import (
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 
+	"github.com/Parse-Documents-Fast/pdf-main/internal/dto"
 	"github.com/Parse-Documents-Fast/pdf-main/internal/orchestrator"
 	"github.com/Parse-Documents-Fast/pdf-main/internal/problem"
 )
 
 type api struct {
-	ports orchestrator.Ports
+	ports  orchestrator.Ports
+	logger *slog.Logger
 }
 
 // handleUpload handles POST /api/pdfs: it reads the multipart form, delegates
@@ -36,8 +39,16 @@ func (a *api) handleUpload(w http.ResponseWriter, r *http.Request) {
 
 	summary, err := orchestrator.Submit(r.Context(), a.ports, content, header.Filename, title)
 	if err != nil {
-		writeError(w, r, err)
+		a.writeError(w, r, err)
 		return
+	}
+
+	a.logger.Info("pdf received", "size_bytes", len(content))
+	switch summary.Status {
+	case dto.StatusPending:
+		a.logger.Debug("document queued", "pdf_id", summary.ID)
+	case dto.StatusDone:
+		a.logger.Debug("markdown persisted", "pdf_id", summary.ID)
 	}
 
 	writeJSON(w, http.StatusOK, summary)

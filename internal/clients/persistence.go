@@ -36,13 +36,13 @@ func (c *Persistence) Create(ctx context.Context, req dto.PersistCreateRequest) 
 	case http.StatusCreated:
 		var r dto.PersistRecord
 		if err := json.Unmarshal(data, &r); err != nil {
-			return dto.PersistRecord{}, c.hc.downstreamError(status, err)
+			return dto.PersistRecord{}, c.hc.downstreamError(status, err, 0)
 		}
 		return r, nil
 	case http.StatusConflict:
 		return dto.PersistRecord{}, orchestrator.ErrDuplicate
 	default:
-		return dto.PersistRecord{}, c.hc.downstreamError(status, nil)
+		return dto.PersistRecord{}, c.hc.downstreamError(status, nil, 0)
 	}
 }
 
@@ -60,13 +60,13 @@ func (c *Persistence) FindByChecksum(ctx context.Context, checksum string) (*dto
 	case http.StatusOK:
 		var r dto.PersistRecord
 		if err := json.Unmarshal(data, &r); err != nil {
-			return nil, c.hc.downstreamError(status, err)
+			return nil, c.hc.downstreamError(status, err, 0)
 		}
 		return &r, nil
 	case http.StatusNotFound:
 		return nil, nil
 	default:
-		return nil, c.hc.downstreamError(status, nil)
+		return nil, c.hc.downstreamError(status, nil, 0)
 	}
 }
 
@@ -81,13 +81,13 @@ func (c *Persistence) Get(ctx context.Context, id string) (dto.PersistRecord, er
 	case http.StatusOK:
 		var r dto.PersistRecord
 		if err := json.Unmarshal(data, &r); err != nil {
-			return dto.PersistRecord{}, c.hc.downstreamError(status, err)
+			return dto.PersistRecord{}, c.hc.downstreamError(status, err, 0)
 		}
 		return r, nil
 	case http.StatusNotFound:
 		return dto.PersistRecord{}, orchestrator.ErrNotFound
 	default:
-		return dto.PersistRecord{}, c.hc.downstreamError(status, nil)
+		return dto.PersistRecord{}, c.hc.downstreamError(status, nil, 0)
 	}
 }
 
@@ -99,12 +99,12 @@ func (c *Persistence) List(ctx context.Context) ([]dto.PersistRecord, error) {
 	}
 
 	if status != http.StatusOK {
-		return nil, c.hc.downstreamError(status, nil)
+		return nil, c.hc.downstreamError(status, nil, 0)
 	}
 
 	var list []dto.PersistRecord
 	if err := json.Unmarshal(data, &list); err != nil {
-		return nil, c.hc.downstreamError(status, err)
+		return nil, c.hc.downstreamError(status, err, 0)
 	}
 	return list, nil
 }
@@ -125,13 +125,13 @@ func (c *Persistence) Update(ctx context.Context, id string, req dto.PersistUpda
 	case http.StatusOK:
 		var r dto.PersistRecord
 		if err := json.Unmarshal(data, &r); err != nil {
-			return dto.PersistRecord{}, c.hc.downstreamError(status, err)
+			return dto.PersistRecord{}, c.hc.downstreamError(status, err, 0)
 		}
 		return r, nil
 	case http.StatusNotFound:
 		return dto.PersistRecord{}, orchestrator.ErrNotFound
 	default:
-		return dto.PersistRecord{}, c.hc.downstreamError(status, nil)
+		return dto.PersistRecord{}, c.hc.downstreamError(status, nil, 0)
 	}
 }
 
@@ -148,7 +148,7 @@ func (c *Persistence) Delete(ctx context.Context, id string) error {
 	case http.StatusNotFound:
 		return orchestrator.ErrNotFound
 	default:
-		return c.hc.downstreamError(status, nil)
+		return c.hc.downstreamError(status, nil, 0)
 	}
 }
 

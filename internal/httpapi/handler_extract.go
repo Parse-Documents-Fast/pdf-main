@@ -22,10 +22,11 @@ func (a *api) handleExtract(w http.ResponseWriter, r *http.Request) {
 		problem.WriteProblem(w, http.StatusBadRequest, titleInvalid, "Missing or unreadable PDF file", r.URL.Path)
 		return
 	}
+	a.logger.Info("pdf received", "size_bytes", len(content))
 
 	v, err := a.ports.Validator.Validate(r.Context(), content, filename)
 	if err != nil {
-		writeError(w, r, err)
+		a.writeError(w, r, err)
 		return
 	}
 	if v.OriginalFormat != dto.FormatPDF {
@@ -35,7 +36,7 @@ func (a *api) handleExtract(w http.ResponseWriter, r *http.Request) {
 
 	result, err := a.ports.Extractor.Extract(r.Context(), content)
 	if err != nil {
-		writeError(w, r, err)
+		a.writeError(w, r, err)
 		return
 	}
 
