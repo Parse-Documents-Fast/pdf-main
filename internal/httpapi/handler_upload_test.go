@@ -28,6 +28,10 @@ type env struct {
 }
 
 func newEnv(t *testing.T) *env {
+	return newEnvWithMaxSize(t, 20)
+}
+
+func newEnvWithMaxSize(t *testing.T, maxFileSizeMB int) *env {
 	t.Helper()
 
 	vs := stubs.NewValidatorStub()
@@ -52,7 +56,7 @@ func newEnv(t *testing.T) *env {
 	}
 
 	return &env{
-		handler:      httpapi.Router(slog.New(slog.DiscardHandler), ports),
+		handler:      httpapi.Router(slog.New(slog.DiscardHandler), ports, maxFileSizeMB),
 		validator:    vs,
 		persistence:  ps,
 		converter:    cs,
@@ -235,5 +239,44 @@ func TestUploadDownstream(t *testing.T) {
 	p := decodeProblem(t, rr)
 	if p.Title != "Service unavailable" {
 		t.Errorf("Title = %q, want Service unavailable", p.Title)
+	}
+}
+
+const mib = 1 << 20
+
+// pdfContent returns n bytes that classify as a PDF in the validator stub.
+func pdfContent(n int) []byte {
+	b := bytes.Repeat([]byte("a"), n)
+	copy(b, "%PDF-1.4\n")
+	return b
+}
+
+func TestUploadExactlyAtLimit(t *testing.T) {
+	e := newEnv(t)
+
+	rr := do(t, e.handler, multipartRequest(t, "big.pdf", "", pdfContent(20*mib)))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (body: %s)", rr.Code, rr.Body.String())
+	}
+}
+
+func TestUploadOverLimit(t *testing.T) {
+	e := newEnv(t)
+
+	rr := do(t, e.handler, multipartRequest(t, "big.pdf", "", pdfContent(20*mib+1)))
+	if rr.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status = %d, want 413 (body: %s)", rr.Code, rr.Body.String())
+	}
+	if p := decodeProblem(t, rr); p.Title != "File too large" {
+		t.Errorf("Title = %q, want File too large", p.Title)
+	}
+}
+
+func TestUploadBodyOverHardCap(t *testing.T) {
+	e := newEnv(t)
+
+	rr := do(t, e.handler, multipartRequest(t, "big.pdf", "", pdfContent(22*mib)))
+	if rr.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status = %d, want 413 (body: %s)", rr.Code, rr.Body.String())
 	}
 }

@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -17,8 +18,14 @@ import (
 // but is required by the load-test benchmark. The endpoint is additive and
 // does not touch the async /api/pdfs flow.
 func (a *api) handleExtract(w http.ResponseWriter, r *http.Request) {
-	content, filename, err := readPDF(r)
+	a.wrapBody(w, r)
+
+	content, filename, err := a.readPDF(r)
 	if err != nil {
+		if errors.Is(err, errFileTooLarge) || isMaxBytesError(err) {
+			a.writeTooLarge(w, r)
+			return
+		}
 		problem.WriteProblem(w, http.StatusBadRequest, titleInvalid, "Missing or unreadable PDF file", r.URL.Path)
 		return
 	}
@@ -44,8 +51,8 @@ func (a *api) handleExtract(w http.ResponseWriter, r *http.Request) {
 }
 
 // readPDF reads the PDF from a multipart "file" field or, failing that, from
-// the raw request body (application/pdf).
-func readPDF(r *http.Request) ([]byte, string, error) {
+// the raw request body (application/pdf), enforcing the file-size limit.
+func (a *api) readPDF(r *http.Request) ([]byte, string, error) {
 	if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
 		file, header, err := r.FormFile("file")
 		if err != nil {
@@ -53,9 +60,21 @@ func readPDF(r *http.Request) ([]byte, string, error) {
 		}
 		defer file.Close()
 		data, err := io.ReadAll(file)
-		return data, header.Filename, err
+		if err != nil {
+			return nil, "", err
+		}
+		if err := a.checkSize(data); err != nil {
+			return nil, "", err
+		}
+		return data, header.Filename, nil
 	}
 
 	data, err := io.ReadAll(r.Body)
-	return data, "document.pdf", err
+	if err != nil {
+		return nil, "", err
+	}
+	if err := a.checkSize(data); err != nil {
+		return nil, "", err
+	}
+	return data, "document.pdf", nil
 }

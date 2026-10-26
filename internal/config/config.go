@@ -37,7 +37,8 @@ type Config struct {
 	// RedisQueueAddr is the address of the Redis instance used for queues.
 	RedisQueueAddr string
 
-	// MaxFileSizeMB is the upload size limit inherited from the monolith.
+	// MaxFileSizeMB is the upload size limit in MB (ADR-0008: single
+	// system-wide value, 20 MB).
 	MaxFileSizeMB int
 
 	// StreamExtraction addres for the queue.
@@ -67,7 +68,7 @@ func Load() Config {
 		ConverterURL:            getEnv("CONVERTER_URL", "http://pdf-converter:8000"),
 		ExtractorURL:            getEnv("EXTRACTOR_URL", "http://pdf-extractor:8000"),
 		RedisQueueAddr:          getEnv("REDIS_QUEUE_ADDR", "redis-queue:6379"),
-		MaxFileSizeMB:           getEnvInt("MAX_FILE_SIZE_MB", 10),
+		MaxFileSizeMB:           getEnvInt("MAX_FILE_SIZE_MB", 20),
 		StreamExtraction:        getEnv("REDIS_STREAM_EXTRACTION", "queue:extraction"),
 		StreamExtractionResults: getEnv("REDIS_STREAM_EXTRACTION_RESULTS", "queue:extraction-results"),
 		ConsumerGroup:           getEnv("REDIS_CONSUMER_GROUP", "pdf-main"),

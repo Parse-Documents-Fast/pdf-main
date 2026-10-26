@@ -65,7 +65,7 @@ El microservicio se configura mediante variables de entorno (principios Twelve-F
 | `REDIS_STREAM_EXTRACTION_RESULTS` | Stream de resultados de extracción | `queue:extraction-results` |
 | `REDIS_CONSUMER_GROUP` | Grupo de consumo de Redis Streams | `pdf-main` |
 | `CONSUMER_NAME` | Nombre del consumidor (único por réplica; por defecto usa el hostname) | auto |
-| `MAX_FILE_SIZE_MB` | Tope de tamaño de subida en MB | `10` |
+| `MAX_FILE_SIZE_MB` | Tope de tamaño de subida en MB | `20` |
 | `LOG_LEVEL` | Nivel de log: `debug`, `info`, `warn` o `error` | `info` |
 
 `GOMAXPROCS` (límite de hilos del runtime de Go) y `PDF_MAIN_REPLICAS` (cantidad de réplicas) se definen a nivel de `docker-compose`, no en el binario.

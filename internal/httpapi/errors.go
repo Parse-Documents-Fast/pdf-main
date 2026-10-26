@@ -21,6 +21,8 @@ const (
 	titleFailed      = "Processing failed"
 	titleUnavailable = "Service unavailable"
 	titleInternal    = "Internal error"
+	titleTooLarge    = "File too large"
+	titleConversion  = "Conversion failed"
 )
 
 // writeError maps a domain error to its RFC 9457 response. Keep this mapping
@@ -45,6 +47,8 @@ func (a *api) writeError(w http.ResponseWriter, r *http.Request, err error) {
 		problem.WriteProblem(w, http.StatusConflict, titleNotReady, "The document is still being processed", instance)
 	case errors.Is(err, orchestrator.ErrFailed):
 		problem.WriteProblem(w, http.StatusUnprocessableEntity, titleFailed, "The document could not be processed", instance)
+	case errors.Is(err, orchestrator.ErrConversion):
+		problem.WriteProblem(w, http.StatusUnprocessableEntity, titleConversion, "The document could not be converted to PDF", instance)
 	case errors.Is(err, orchestrator.ErrDownstream):
 		var de orchestrator.DownstreamError
 		if errors.As(err, &de) {
@@ -65,4 +69,12 @@ func (a *api) writeError(w http.ResponseWriter, r *http.Request, err error) {
 	default:
 		problem.WriteProblem(w, http.StatusInternalServerError, titleInternal, "An unexpected error occurred", instance)
 	}
+}
+
+// writeTooLarge writes a 413 RFC 9457 response for uploads that exceed the
+// file-size limit (ADR-0008). The size rejection happens in the HTTP adapter
+// (transport), before the core runs, so it is mapped here rather than through
+// writeError.
+func (a *api) writeTooLarge(w http.ResponseWriter, r *http.Request) {
+	problem.WriteProblem(w, http.StatusRequestEntityTooLarge, titleTooLarge, "The file exceeds the maximum allowed size", r.URL.Path)
 }

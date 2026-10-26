@@ -108,3 +108,27 @@ func TestExtractDownstream(t *testing.T) {
 		t.Errorf("Detail = %q, want the extractor service named", p.Detail)
 	}
 }
+
+func TestExtractOverLimit(t *testing.T) {
+	e := newEnv(t)
+
+	rr := do(t, e.handler, extractMultipart(t, "big.pdf", pdfContent(20*mib+1)))
+	if rr.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status = %d, want 413 (body: %s)", rr.Code, rr.Body.String())
+	}
+	if p := decodeProblem(t, rr); p.Title != "File too large" {
+		t.Errorf("Title = %q, want File too large", p.Title)
+	}
+}
+
+func TestExtractRawBodyOverLimit(t *testing.T) {
+	e := newEnv(t)
+
+	req := httptest.NewRequest(http.MethodPost, "/extract", bytes.NewReader(pdfContent(20*mib+1)))
+	req.Header.Set("Content-Type", "application/pdf")
+
+	rr := do(t, e.handler, req)
+	if rr.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status = %d, want 413 (body: %s)", rr.Code, rr.Body.String())
+	}
+}

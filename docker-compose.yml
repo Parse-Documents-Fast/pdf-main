@@ -6,6 +6,9 @@ services:
     env_file:
       - path: .env
         required: true
+    environment:
+      # ADR-0008: límite único de subida (el .env raíz es la fuente de verdad).
+      - MAX_FILE_SIZE_MB=${MAX_FILE_SIZE_MB:-20}
     deploy:
       replicas: ${PDF_MAIN_REPLICAS:-1}
     healthcheck:
