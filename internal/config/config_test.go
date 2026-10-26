@@ -17,7 +17,7 @@ var defaultConfig = Config{
 	ConverterURL:            "http://pdf-converter:8000",
 	ExtractorURL:            "http://pdf-extractor:8000",
 	RedisQueueAddr:          "redis-queue:6379",
-	MaxFileSizeMB:           10,
+	MaxFileSizeMB:           20,
 	StreamExtraction:        "queue:extraction",
 	StreamExtractionResults: "queue:extraction-results",
 	ConsumerGroup:           "pdf-main",

@@ -373,7 +373,7 @@ El breaker envuelve solo las llamadas internas de `clients/*`; el borde público
 | `CONVERTER_URL` | `http://pdf-converter:8000` | Base URL de `pdf-converter` |
 | `EXTRACTOR_URL` | `http://pdf-extractor:8000` | Base URL de `pdf-extractor` (solo `POST /extract`, benchmark) |
 | `REDIS_QUEUE_ADDR` | `redis-queue:6379` | Redis de colas (ADR-0004) |
-| `MAX_FILE_SIZE_MB` | `10` | Tope de tamaño heredado del monolito |
+| `MAX_FILE_SIZE_MB` | `20` | Límite de tamaño de subida en MB (ADR-0008) |
 
 **Streams (constantes, ADR-0004 + ADR-0005):** solo `queue:extraction` y `queue:extraction-results`, con consumer group y `XACK`. (`queue:conversion*` eliminados.)
 

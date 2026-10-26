@@ -88,7 +88,7 @@ func run(logger *slog.Logger, level string) error {
 
 	srv := &http.Server{
 		Addr:    cfg.HTTPAddr,
-		Handler: httpapi.Router(logger, ports),
+		Handler: httpapi.Router(logger, ports, cfg.MaxFileSizeMB),
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())

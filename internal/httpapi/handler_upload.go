@@ -12,15 +12,22 @@ import (
 )
 
 type api struct {
-	ports  orchestrator.Ports
-	logger *slog.Logger
+	ports         orchestrator.Ports
+	logger        *slog.Logger
+	maxFileSizeMB int
 }
 
 // handleUpload handles POST /api/pdfs: it reads the multipart form, delegates
 // to the orchestrator core and maps the result to a JSON response.
 func (a *api) handleUpload(w http.ResponseWriter, r *http.Request) {
+	a.wrapBody(w, r)
+
 	file, header, err := r.FormFile("file")
 	if err != nil {
+		if isMaxBytesError(err) {
+			a.writeTooLarge(w, r)
+			return
+		}
 		problem.WriteProblem(w, http.StatusBadRequest, titleInvalid, "Missing 'file' field in the form", r.URL.Path)
 		return
 	}
@@ -28,7 +35,15 @@ func (a *api) handleUpload(w http.ResponseWriter, r *http.Request) {
 
 	content, err := io.ReadAll(file)
 	if err != nil {
+		if isMaxBytesError(err) {
+			a.writeTooLarge(w, r)
+			return
+		}
 		problem.WriteProblem(w, http.StatusBadRequest, titleInvalid, "Could not read the file", r.URL.Path)
+		return
+	}
+	if err := a.checkSize(content); err != nil {
+		a.writeTooLarge(w, r)
 		return
 	}
 

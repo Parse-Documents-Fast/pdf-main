@@ -15,8 +15,8 @@ import (
 // The public contract (methods, paths and status codes) is defined in
 // docs/spec.md §Endpoints. These routes are the coordination point with the
 // CLI/web client and with pdf-infra (Traefik routes by Host + prefix).
-func Router(logger *slog.Logger, p orchestrator.Ports) http.Handler {
-	a := &api{ports: p, logger: logger}
+func Router(logger *slog.Logger, p orchestrator.Ports, maxFileSizeMB int) http.Handler {
+	a := &api{ports: p, logger: logger, maxFileSizeMB: maxFileSizeMB}
 
 	r := chi.NewRouter()
 	r.Use(logRequests(logger))

@@ -123,6 +123,18 @@ func TestConverterConvertDownstream(t *testing.T) {
 	}
 }
 
+func TestConverterConvertInvalid(t *testing.T) {
+	s := stubs.NewConverterStub()
+	s.FailStatus = http.StatusUnprocessableEntity
+	defer s.Close()
+
+	c := clients.NewConverter(s.URL)
+	_, err := c.Convert(context.Background(), "# t")
+	if !errors.Is(err, orchestrator.ErrConversion) {
+		t.Fatalf("err = %v, want ErrConversion", err)
+	}
+}
+
 func TestPersistenceCRUD(t *testing.T) {
 	s := stubs.NewPersistenceStub()
 	defer s.Close()
