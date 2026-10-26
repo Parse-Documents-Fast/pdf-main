@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/Parse-Documents-Fast/pdf-main/internal/dto"
+	"github.com/Parse-Documents-Fast/pdf-main/internal/orchestrator"
 )
 
 // Converter is the HTTP client for pdf-converter (download-only, ADR-0005).
@@ -18,8 +19,9 @@ func NewConverter(baseURL string) *Converter {
 	return &Converter{hc: newHTTPClient("converter", baseURL)}
 }
 
-// Convert turns Markdown into PDF bytes. Any non-200 response maps to a
-// typed ErrDownstream (orchestrator.DownstreamError).
+// Convert turns Markdown into PDF bytes. A 422 maps to
+// orchestrator.ErrConversion (the Markdown cannot be converted); any other
+// non-200 response maps to a typed ErrDownstream (orchestrator.DownstreamError).
 func (c *Converter) Convert(ctx context.Context, content string) (dto.ConvertResponse, error) {
 	body, err := json.Marshal(dto.ConvertRequest{Content: content})
 	if err != nil {
@@ -31,7 +33,14 @@ func (c *Converter) Convert(ctx context.Context, content string) (dto.ConvertRes
 		return dto.ConvertResponse{}, err
 	}
 
-	if status != http.StatusOK {
+	switch status {
+	case http.StatusOK:
+		// proceed to decode
+	case http.StatusUnprocessableEntity:
+		// The converter rejected the Markdown as unconvertible (user input),
+		// not a service outage: surface it as a domain error, not 503.
+		return dto.ConvertResponse{}, orchestrator.ErrConversion
+	default:
 		return dto.ConvertResponse{}, c.hc.downstreamError(status, nil, 0)
 	}
 

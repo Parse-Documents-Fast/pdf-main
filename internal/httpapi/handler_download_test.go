@@ -52,6 +52,21 @@ func TestDownloadPDF(t *testing.T) {
 	}
 }
 
+func TestDownloadPDFConversionFailed(t *testing.T) {
+	e := newEnv(t)
+	e.converter.FailStatus = http.StatusUnprocessableEntity
+
+	s := upload(t, e, "nota.md", "nota", []byte("# título"))
+
+	rr := do(t, e.handler, httptest.NewRequest(http.MethodGet, "/api/pdfs/"+s.ID+"/download?format=pdf", nil))
+	if rr.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422 (body: %s)", rr.Code, rr.Body.String())
+	}
+	if p := decodeProblem(t, rr); p.Title != "Conversion failed" {
+		t.Errorf("Title = %q, want Conversion failed", p.Title)
+	}
+}
+
 func TestDownloadInvalidFormat(t *testing.T) {
 	e := newEnv(t)
 

@@ -27,6 +27,10 @@ var (
 
 	// ErrFailed marks a document whose processing failed.
 	ErrFailed = errors.New("document processing failed")
+
+	// ErrConversion marks a Markdown document that cannot be converted to PDF
+	// (the converter rejected the content). It maps to 422.
+	ErrConversion = errors.New("conversion failed")
 )
 
 // DuplicateError wraps ErrDuplicate and carries the ID of the existing
