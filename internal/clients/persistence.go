@@ -36,13 +36,13 @@ func (c *Persistence) Create(ctx context.Context, req dto.PersistCreateRequest) 
 	case http.StatusCreated:
 		var r dto.PersistRecord
 		if err := json.Unmarshal(data, &r); err != nil {
-			return dto.PersistRecord{}, c.hc.downstreamError(status, err, 0)
+			return dto.PersistRecord{}, c.hc.decodeError(status, err)
 		}
 		return r, nil
 	case http.StatusConflict:
 		return dto.PersistRecord{}, orchestrator.ErrDuplicate
 	default:
-		return dto.PersistRecord{}, c.hc.downstreamError(status, nil, 0)
+		return dto.PersistRecord{}, c.persistenceError(status)
 	}
 }
 
@@ -60,13 +60,13 @@ func (c *Persistence) FindByChecksum(ctx context.Context, checksum string) (*dto
 	case http.StatusOK:
 		var r dto.PersistRecord
 		if err := json.Unmarshal(data, &r); err != nil {
-			return nil, c.hc.downstreamError(status, err, 0)
+			return nil, c.hc.decodeError(status, err)
 		}
 		return &r, nil
 	case http.StatusNotFound:
 		return nil, nil
 	default:
-		return nil, c.hc.downstreamError(status, nil, 0)
+		return nil, c.persistenceError(status)
 	}
 }
 
@@ -81,13 +81,13 @@ func (c *Persistence) Get(ctx context.Context, id string) (dto.PersistRecord, er
 	case http.StatusOK:
 		var r dto.PersistRecord
 		if err := json.Unmarshal(data, &r); err != nil {
-			return dto.PersistRecord{}, c.hc.downstreamError(status, err, 0)
+			return dto.PersistRecord{}, c.hc.decodeError(status, err)
 		}
 		return r, nil
 	case http.StatusNotFound:
 		return dto.PersistRecord{}, orchestrator.ErrNotFound
 	default:
-		return dto.PersistRecord{}, c.hc.downstreamError(status, nil, 0)
+		return dto.PersistRecord{}, c.persistenceError(status)
 	}
 }
 
@@ -99,12 +99,12 @@ func (c *Persistence) List(ctx context.Context) ([]dto.PersistRecord, error) {
 	}
 
 	if status != http.StatusOK {
-		return nil, c.hc.downstreamError(status, nil, 0)
+		return nil, c.persistenceError(status)
 	}
 
 	var list []dto.PersistRecord
 	if err := json.Unmarshal(data, &list); err != nil {
-		return nil, c.hc.downstreamError(status, err, 0)
+		return nil, c.hc.decodeError(status, err)
 	}
 	return list, nil
 }
@@ -125,13 +125,13 @@ func (c *Persistence) Update(ctx context.Context, id string, req dto.PersistUpda
 	case http.StatusOK:
 		var r dto.PersistRecord
 		if err := json.Unmarshal(data, &r); err != nil {
-			return dto.PersistRecord{}, c.hc.downstreamError(status, err, 0)
+			return dto.PersistRecord{}, c.hc.decodeError(status, err)
 		}
 		return r, nil
 	case http.StatusNotFound:
 		return dto.PersistRecord{}, orchestrator.ErrNotFound
 	default:
-		return dto.PersistRecord{}, c.hc.downstreamError(status, nil, 0)
+		return dto.PersistRecord{}, c.persistenceError(status)
 	}
 }
 
@@ -148,8 +148,19 @@ func (c *Persistence) Delete(ctx context.Context, id string) error {
 	case http.StatusNotFound:
 		return orchestrator.ErrNotFound
 	default:
-		return c.hc.downstreamError(status, nil, 0)
+		return c.persistenceError(status)
 	}
+}
+
+// persistenceError classifies a non-success response from pdf-persistence. A
+// 400 (RequestValidationError) means pdf-main sent an invalid body — a bug in
+// pdf-main, not a downstream outage — so it maps to ErrPersistence rather than
+// ErrDownstream (503). Every other status maps to ErrDownstream as before.
+func (c *Persistence) persistenceError(status int) error {
+	if status == http.StatusBadRequest {
+		return orchestrator.ErrPersistence
+	}
+	return c.hc.downstreamError(status, nil, 0)
 }
 
 // documentPath builds the /documents/{id} path, escaping the id.

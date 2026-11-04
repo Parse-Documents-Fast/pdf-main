@@ -40,7 +40,7 @@ func (c *Extractor) Extract(ctx context.Context, content []byte) (dto.ExtractRes
 
 	var resp dto.ExtractResponse
 	if err := json.Unmarshal(data, &resp); err != nil {
-		return dto.ExtractResponse{}, c.hc.downstreamError(status, err, 0)
+		return dto.ExtractResponse{}, c.hc.decodeError(status, err)
 	}
 	return resp, nil
 }

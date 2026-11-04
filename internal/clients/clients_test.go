@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/Parse-Documents-Fast/pdf-main/internal/clients"
@@ -235,6 +236,42 @@ func TestPersistenceDownstream(t *testing.T) {
 
 	if _, err := c.Create(context.Background(), dto.PersistCreateRequest{}); !errors.Is(err, orchestrator.ErrDownstream) {
 		t.Errorf("Create: err = %v, want ErrDownstream", err)
+	}
+}
+
+func TestPersistenceRejected(t *testing.T) {
+	s := stubs.NewPersistenceStub()
+	s.FailStatus = http.StatusBadRequest
+	defer s.Close()
+	c := clients.NewPersistence(s.URL)
+
+	_, err := c.Get(context.Background(), "507f1f77bcf86cd799439011")
+	if !errors.Is(err, orchestrator.ErrPersistence) {
+		t.Fatalf("Get: err = %v, want ErrPersistence", err)
+	}
+	if errors.Is(err, orchestrator.ErrDownstream) {
+		t.Fatalf("Get: err = %v, must not be ErrDownstream", err)
+	}
+}
+
+func TestPersistenceDecodeError(t *testing.T) {
+	// Mirrors the real bug: pdf-persistence returns 200 with a created_at that
+	// lacks a timezone, which time.Time cannot parse. It must surface as a
+	// contract violation (ErrDecode → 500), not as "downstream unavailable".
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"id":"1","title":"x","original_format":"pdf","checksum":"c","status":"done","content":null,"error":null,"created_at":"2026-10-24T00:10:44.599000"}`))
+	}))
+	defer s.Close()
+	c := clients.NewPersistence(s.URL)
+
+	_, err := c.Get(context.Background(), "1")
+	if !errors.Is(err, orchestrator.ErrDecode) {
+		t.Fatalf("Get: err = %v, want ErrDecode", err)
+	}
+	if errors.Is(err, orchestrator.ErrDownstream) {
+		t.Fatalf("Get: err = %v, must not be ErrDownstream", err)
 	}
 }
 

@@ -46,7 +46,7 @@ func (c *Converter) Convert(ctx context.Context, content string) (dto.ConvertRes
 
 	var v dto.ConvertResponse
 	if err := json.Unmarshal(data, &v); err != nil {
-		return dto.ConvertResponse{}, c.hc.downstreamError(status, err, 0)
+		return dto.ConvertResponse{}, c.hc.decodeError(status, err)
 	}
 	return v, nil
 }

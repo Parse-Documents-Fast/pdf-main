@@ -280,3 +280,16 @@ func TestUploadBodyOverHardCap(t *testing.T) {
 		t.Fatalf("status = %d, want 413 (body: %s)", rr.Code, rr.Body.String())
 	}
 }
+
+func TestUploadPersistenceRejected(t *testing.T) {
+	e := newEnv(t)
+	e.persistence.FailStatus = http.StatusBadRequest
+
+	rr := do(t, e.handler, multipartRequest(t, "x.pdf", "", []byte("%PDF-1.4")))
+	if rr.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500 (body: %s)", rr.Code, rr.Body.String())
+	}
+	if p := decodeProblem(t, rr); p.Title != "Internal error" {
+		t.Errorf("Title = %q, want Internal error", p.Title)
+	}
+}

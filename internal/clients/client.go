@@ -105,3 +105,11 @@ func (c *httpClient) downstreamError(status int, cause error, duration time.Dura
 	}
 	return orchestrator.DownstreamError{Service: c.name, Status: status, Err: cause, Duration: duration}
 }
+
+// decodeError builds an error for a downstream response whose body could not
+// be decoded. Unlike downstreamError, it does not wrap ErrDownstream: the
+// downstream responded (with a 2xx) but with an unexpected body, which is a
+// contract violation surfaced as 500, not 503.
+func (c *httpClient) decodeError(status int, err error) error {
+	return orchestrator.DecodeError{Service: c.name, Status: status, Err: err}
+}
