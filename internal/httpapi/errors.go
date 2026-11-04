@@ -49,6 +49,18 @@ func (a *api) writeError(w http.ResponseWriter, r *http.Request, err error) {
 		problem.WriteProblem(w, http.StatusUnprocessableEntity, titleFailed, "The document could not be processed", instance)
 	case errors.Is(err, orchestrator.ErrConversion):
 		problem.WriteProblem(w, http.StatusUnprocessableEntity, titleConversion, "The document could not be converted to PDF", instance)
+	case errors.Is(err, orchestrator.ErrPersistence):
+		problem.WriteProblem(w, http.StatusInternalServerError, titleInternal, "The persistence service rejected the request", instance)
+	case errors.Is(err, orchestrator.ErrDecode):
+		var de orchestrator.DecodeError
+		if errors.As(err, &de) {
+			a.logger.Error("downstream response decode failed",
+				"peer_service", de.Service,
+				"http_status", de.Status,
+				"error", de.Err,
+			)
+		}
+		problem.WriteProblem(w, http.StatusInternalServerError, titleInternal, "An unexpected error occurred", instance)
 	case errors.Is(err, orchestrator.ErrDownstream):
 		var de orchestrator.DownstreamError
 		if errors.As(err, &de) {

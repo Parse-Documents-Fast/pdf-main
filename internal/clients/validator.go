@@ -38,7 +38,7 @@ func (c *Validator) Validate(ctx context.Context, content []byte, filename strin
 	case http.StatusOK:
 		var v dto.ValidateResponse
 		if err := json.Unmarshal(data, &v); err != nil {
-			return dto.ValidateResponse{}, c.hc.downstreamError(status, err, 0)
+			return dto.ValidateResponse{}, c.hc.decodeError(status, err)
 		}
 		return v, nil
 	case http.StatusBadRequest:

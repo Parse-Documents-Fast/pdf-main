@@ -31,6 +31,16 @@ var (
 	// ErrConversion marks a Markdown document that cannot be converted to PDF
 	// (the converter rejected the content). It maps to 422.
 	ErrConversion = errors.New("conversion failed")
+
+	// ErrPersistence marks a request that pdf-persistence rejected (400
+	// RequestValidationError): pdf-main sent an invalid body, so it is a bug in
+	// pdf-main rather than a downstream outage. It maps to 500.
+	ErrPersistence = errors.New("persistence rejected the request")
+
+	// ErrDecode marks a downstream response that could not be decoded into the
+	// expected DTO (contract violation). It maps to 500, not 503: the downstream
+	// responded, but with a body pdf-main could not parse.
+	ErrDecode = errors.New("downstream response could not be decoded")
 )
 
 // DuplicateError wraps ErrDuplicate and carries the ID of the existing
@@ -77,4 +87,26 @@ func (e DownstreamError) Error() string {
 
 func (e DownstreamError) Unwrap() error {
 	return ErrDownstream
+}
+
+// DecodeError carries the downstream service and status for a response whose
+// body could not be decoded into the expected DTO (contract violation). It
+// wraps ErrDecode so errors.Is(err, ErrDecode) works across all clients while
+// the HTTP adapter can still name the service that returned the bad body.
+type DecodeError struct {
+	// Service is the short name of the downstream (e.g. "persistence").
+	Service string
+	// Status is the HTTP status the downstream returned with the undecodable
+	// body (normally a 2xx).
+	Status int
+	// Err is the underlying decode error.
+	Err error
+}
+
+func (e DecodeError) Error() string {
+	return fmt.Sprintf("%s: decode response (HTTP %d): %v", e.Service, e.Status, e.Err)
+}
+
+func (e DecodeError) Unwrap() error {
+	return ErrDecode
 }
